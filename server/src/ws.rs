@@ -9,8 +9,9 @@ use futures_util::{SinkExt, StreamExt};
 use lonisle_core::device::{verify_device_cert, verify_device_signature, DeviceKeypair};
 use lonisle_core::proto::{
     self, client_envelope::MsgType as ClientMsgType, server_envelope::MsgType as ServerMsgType,
-    ClientEnvelope, Hello, HelloResponse, JoinRequest, JoinResponse, MemberInfo, SendMessage,
-    SendMessageAck, ServerEnvelope, SyncRequest, SyncResponse,
+    ClientEnvelope, Hello, HelloResponse, HistoryRequest, HistoryResponse, JoinRequest,
+    JoinResponse, MemberInfo, SendMessage, SendMessageAck, ServerEnvelope, SyncRequest,
+    SyncResponse,
 };
 use lonisle_core::signature::{
     hello_signing_payload, verify_delete_message, verify_edit_message, verify_send_message,
@@ -179,6 +180,7 @@ async fn handle_client_message(
             handle_send_message(state, current_user, current_device, payload).await?
         }
         ClientMsgType::Sync => handle_sync(state, payload).await?,
+        ClientMsgType::History => handle_history(state, payload).await?,
         ClientMsgType::ListMembers => handle_list_members(state).await?,
         ClientMsgType::ListTopics => handle_list_topics(state).await?,
         ClientMsgType::CreateTopic => handle_create_topic(state, current_user, payload).await?,
@@ -1053,6 +1055,70 @@ async fn handle_send_message(
     })
 }
 
+/// StoredMessage → 广播消息（同步/历史翻页共用映射）
+fn stored_to_broadcast(m: StoredMessage) -> proto::BroadcastMessage {
+    proto::BroadcastMessage {
+        seq: m.seq,
+        topic_id: m.topic_id,
+        msg_id: m.msg_id,
+        author_id: m.author_id.into_bytes(),
+        device_id: m.device_id,
+        author_name: m.author_name,
+        server_ts: m.server_ts,
+        content: Some(proto::MessageContent {
+            text: m.content_text,
+            attachment: storage::attachment_from_json(&m.attachment_json),
+            encrypted: vec![],
+        }),
+        edited: m.edited,
+        deleted: m.deleted,
+        mentions: m.mentions,
+        reactions: vec![],
+        reply_to: m.reply_to,
+    }
+}
+
+/// 历史消息向前翻页（加载更早消息，F-MSG：滚动到顶部触发）
+async fn handle_history(
+    state: &Arc<AppState>,
+    payload: &[u8],
+) -> anyhow::Result<ServerEnvelope> {
+    let req = HistoryRequest::decode(payload)?;
+    let topic_id = if req.topic_id.is_empty() {
+        DEFAULT_TOPIC_ID.to_string()
+    } else {
+        req.topic_id.clone()
+    };
+    let limit = if req.limit == 0 { 50 } else { req.limit.min(100) };
+
+    // before_seq=0 表示从该话题最新往前翻
+    let before_seq = if req.before_seq == 0 {
+        u64::MAX
+    } else {
+        req.before_seq
+    };
+    let msgs = state
+        .storage
+        .get_messages_before(&topic_id, before_seq, limit)
+        .await?;
+    let has_more = msgs.len() as u32 == limit;
+
+    let broadcast_msgs: Vec<proto::BroadcastMessage> =
+        msgs.into_iter().map(stored_to_broadcast).collect();
+
+    let resp = HistoryResponse {
+        topic_id,
+        messages: broadcast_msgs,
+        has_more,
+    };
+    Ok(ServerEnvelope {
+        r#type: ServerMsgType::HistoryResponse as i32,
+        request_id: 0,
+        payload: resp.encode_to_vec(),
+        error: String::new(),
+    })
+}
+
 /// 游标增量同步
 async fn handle_sync(state: &Arc<AppState>, payload: &[u8]) -> anyhow::Result<ServerEnvelope> {
     let req = SyncRequest::decode(payload)?;
@@ -1073,28 +1139,8 @@ async fn handle_sync(state: &Arc<AppState>, payload: &[u8]) -> anyhow::Result<Se
         .await?;
     let latest = state.storage.latest_seq(&topic_id).await?;
 
-    let broadcast_msgs: Vec<proto::BroadcastMessage> = msgs
-        .into_iter()
-        .map(|m| proto::BroadcastMessage {
-            seq: m.seq,
-            topic_id: m.topic_id,
-            msg_id: m.msg_id,
-            author_id: m.author_id.into_bytes(),
-            device_id: m.device_id,
-            author_name: m.author_name,
-            server_ts: m.server_ts,
-            content: Some(proto::MessageContent {
-                text: m.content_text,
-                attachment: storage::attachment_from_json(&m.attachment_json),
-                encrypted: vec![],
-            }),
-            edited: m.edited,
-            deleted: m.deleted,
-            mentions: m.mentions,
-            reactions: vec![],
-            reply_to: m.reply_to,
-        })
-        .collect();
+    let broadcast_msgs: Vec<proto::BroadcastMessage> =
+        msgs.into_iter().map(stored_to_broadcast).collect();
 
     let resp = SyncResponse {
         topic_id,

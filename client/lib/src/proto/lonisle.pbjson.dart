@@ -1,6 +1,6 @@
 // This is a generated file - do not edit.
 //
-// Generated from lonisle.proto.
+// Generated from proto/lonisle.proto.
 
 // @dart = 3.3
 
@@ -823,6 +823,44 @@ final $typed_data.Uint8List syncResponseDescriptor = $convert.base64Decode(
     'gCIAEoBFIJbGF0ZXN0U2VxEjUKCG1lc3NhZ2VzGAMgAygLMhkubG9uaXNsZS5Ccm9hZGNhc3RN'
     'ZXNzYWdlUghtZXNzYWdlcw==');
 
+@$core.Deprecated('Use historyRequestDescriptor instead')
+const HistoryRequest$json = {
+  '1': 'HistoryRequest',
+  '2': [
+    {'1': 'topic_id', '3': 1, '4': 1, '5': 9, '10': 'topicId'},
+    {'1': 'before_seq', '3': 2, '4': 1, '5': 4, '10': 'beforeSeq'},
+    {'1': 'limit', '3': 3, '4': 1, '5': 13, '10': 'limit'},
+  ],
+};
+
+/// Descriptor for `HistoryRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List historyRequestDescriptor = $convert.base64Decode(
+    'Cg5IaXN0b3J5UmVxdWVzdBIZCgh0b3BpY19pZBgBIAEoCVIHdG9waWNJZBIdCgpiZWZvcmVfc2'
+    'VxGAIgASgEUgliZWZvcmVTZXESFAoFbGltaXQYAyABKA1SBWxpbWl0');
+
+@$core.Deprecated('Use historyResponseDescriptor instead')
+const HistoryResponse$json = {
+  '1': 'HistoryResponse',
+  '2': [
+    {'1': 'topic_id', '3': 1, '4': 1, '5': 9, '10': 'topicId'},
+    {
+      '1': 'messages',
+      '3': 2,
+      '4': 3,
+      '5': 11,
+      '6': '.lonisle.BroadcastMessage',
+      '10': 'messages'
+    },
+    {'1': 'has_more', '3': 3, '4': 1, '5': 8, '10': 'hasMore'},
+  ],
+};
+
+/// Descriptor for `HistoryResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List historyResponseDescriptor = $convert.base64Decode(
+    'Cg9IaXN0b3J5UmVzcG9uc2USGQoIdG9waWNfaWQYASABKAlSB3RvcGljSWQSNQoIbWVzc2FnZX'
+    'MYAiADKAsyGS5sb25pc2xlLkJyb2FkY2FzdE1lc3NhZ2VSCG1lc3NhZ2VzEhkKCGhhc19tb3Jl'
+    'GAMgASgIUgdoYXNNb3Jl');
+
 @$core.Deprecated('Use memberInfoDescriptor instead')
 const MemberInfo$json = {
   '1': 'MemberInfo',
@@ -1425,6 +1463,7 @@ const ClientEnvelope_MsgType$json = {
     {'1': 'MARK_MENTION_READ', '2': 35},
     {'1': 'MENTION_READ_LIST', '2': 36},
     {'1': 'JOIN_AV', '2': 37},
+    {'1': 'HISTORY', '2': 38},
   ],
 };
 
@@ -1432,7 +1471,7 @@ const ClientEnvelope_MsgType$json = {
 final $typed_data.Uint8List clientEnvelopeDescriptor = $convert.base64Decode(
     'Cg5DbGllbnRFbnZlbG9wZRIzCgR0eXBlGAEgASgOMh8ubG9uaXNsZS5DbGllbnRFbnZlbG9wZS'
     '5Nc2dUeXBlUgR0eXBlEh0KCnJlcXVlc3RfaWQYAiABKARSCXJlcXVlc3RJZBIYCgdwYXlsb2Fk'
-    'GAMgASgMUgdwYXlsb2FkIscFCgdNc2dUeXBlEgkKBUhFTExPEAASCAoESk9JThABEhAKDFNFTk'
+    'GAMgASgMUgdwYXlsb2FkItQFCgdNc2dUeXBlEgkKBUhFTExPEAASCAoESk9JThABEhAKDFNFTk'
     'RfTUVTU0FHRRACEggKBFNZTkMQAxIQCgxMSVNUX01FTUJFUlMQBBIICgRQSU5HEAUSDwoLTElT'
     'VF9UT1BJQ1MQBhIQCgxDUkVBVEVfVE9QSUMQBxIQCgxVUERBVEVfVE9QSUMQCBIQCgxERUxFVE'
     'VfVE9QSUMQCRISCg5SRU9SREVSX1RPUElDUxAKEhYKEkxJU1RfSk9JTl9SRVFVRVNUUxALEhgK'
@@ -1445,7 +1484,7 @@ final $typed_data.Uint8List clientEnvelopeDescriptor = $convert.base64Decode(
     'UkVfS0VZUxAcEhIKDkZFVENIX1BSRV9LRVlTEB0SDwoLVVBTRVJUX1JPTEUQHhIPCgtERUxFVE'
     'VfUk9MRRAfEg4KCkxJU1RfUk9MRVMQIBIPCgtBU1NJR05fUk9MRRAhEhEKDVVOQVNTSUdOX1JP'
     'TEUQIhIVChFNQVJLX01FTlRJT05fUkVBRBAjEhUKEU1FTlRJT05fUkVBRF9MSVNUECQSCwoHSk'
-    '9JTl9BVhAl');
+    '9JTl9BVhAlEgsKB0hJU1RPUlkQJg==');
 
 @$core.Deprecated('Use serverEnvelopeDescriptor instead')
 const ServerEnvelope$json = {
@@ -1491,6 +1530,7 @@ const ServerEnvelope_MsgType$json = {
     {'1': 'MENTION_READ_LIST_RESPONSE', '2': 18},
     {'1': 'JOIN_AV_RESPONSE', '2': 19},
     {'1': 'SERVER_INFO_UPDATED', '2': 20},
+    {'1': 'HISTORY_RESPONSE', '2': 21},
   ],
 };
 
@@ -1498,7 +1538,7 @@ const ServerEnvelope_MsgType$json = {
 final $typed_data.Uint8List serverEnvelopeDescriptor = $convert.base64Decode(
     'Cg5TZXJ2ZXJFbnZlbG9wZRIzCgR0eXBlGAEgASgOMh8ubG9uaXNsZS5TZXJ2ZXJFbnZlbG9wZS'
     '5Nc2dUeXBlUgR0eXBlEh0KCnJlcXVlc3RfaWQYAiABKARSCXJlcXVlc3RJZBIYCgdwYXlsb2Fk'
-    'GAMgASgMUgdwYXlsb2FkEhQKBWVycm9yGAQgASgJUgVlcnJvciLRAwoHTXNnVHlwZRISCg5IRU'
+    'GAMgASgMUgdwYXlsb2FkEhQKBWVycm9yGAQgASgJUgVlcnJvciLnAwoHTXNnVHlwZRISCg5IRU'
     'xMT19SRVNQT05TRRAAEhEKDUpPSU5fUkVTUE9OU0UQARIUChBTRU5EX01FU1NBR0VfQUNLEAIS'
     'DQoJQlJPQURDQVNUEAMSEQoNU1lOQ19SRVNQT05TRRAEEhgKFE1FTUJFUl9MSVNUX1JFU1BPTl'
     'NFEAUSCAoEUE9ORxAGEgkKBUVSUk9SEAcSFwoTVE9QSUNfTElTVF9SRVNQT05TRRAIEh4KGkpP'
@@ -1507,4 +1547,4 @@ final $typed_data.Uint8List serverEnvelopeDescriptor = $convert.base64Decode(
     'SVNUX1JFU1BPTlNFEA4SGAoUTUVNQkVSX0RFVklDRV9DSEFOR0UQDxIbChdQUkVfS0VZX0JVTk'
     'RMRV9SRVNQT05TRRAQEhYKElJPTEVfTElTVF9SRVNQT05TRRAREh4KGk1FTlRJT05fUkVBRF9M'
     'SVNUX1JFU1BPTlNFEBISFAoQSk9JTl9BVl9SRVNQT05TRRATEhcKE1NFUlZFUl9JTkZPX1VQRE'
-    'FURUQQFA==');
+    'FURUQQFBIUChBISVNUT1JZX1JFU1BPTlNFEBU=');

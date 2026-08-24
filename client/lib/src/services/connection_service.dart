@@ -523,6 +523,19 @@ class ConnectionService {
     return pb.SyncResponse.fromBuffer(resp.payload);
   }
 
+  /// 历史消息向前翻页（加载更早消息；beforeSeq=0 表示从该话题最新往前）
+  Future<pb.HistoryResponse> history(String topicId, int beforeSeq) async {
+    final req = pb.HistoryRequest()
+      ..topicId = topicId
+      ..beforeSeq = Int64(beforeSeq)
+      ..limit = 50;
+    final resp = await _request(
+      pb.ClientEnvelope_MsgType.HISTORY,
+      req.writeToBuffer(),
+    );
+    return pb.HistoryResponse.fromBuffer(resp.payload);
+  }
+
   /// 成员列表
   Future<pb.MemberListResponse> listMembers() async {
     final resp = await _request(

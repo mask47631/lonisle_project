@@ -1,6 +1,6 @@
 // This is a generated file - do not edit.
 //
-// Generated from lonisle.proto.
+// Generated from proto/lonisle.proto.
 
 // @dart = 3.3
 
@@ -222,6 +222,8 @@ class ClientEnvelope_MsgType extends $pb.ProtobufEnum {
       ClientEnvelope_MsgType._(36, _omitEnumNames ? '' : 'MENTION_READ_LIST');
   static const ClientEnvelope_MsgType JOIN_AV =
       ClientEnvelope_MsgType._(37, _omitEnumNames ? '' : 'JOIN_AV');
+  static const ClientEnvelope_MsgType HISTORY =
+      ClientEnvelope_MsgType._(38, _omitEnumNames ? '' : 'HISTORY');
 
   static const $core.List<ClientEnvelope_MsgType> values =
       <ClientEnvelope_MsgType>[
@@ -263,10 +265,11 @@ class ClientEnvelope_MsgType extends $pb.ProtobufEnum {
     MARK_MENTION_READ,
     MENTION_READ_LIST,
     JOIN_AV,
+    HISTORY,
   ];
 
   static final $core.List<ClientEnvelope_MsgType?> _byValue =
-      $pb.ProtobufEnum.$_initByValueList(values, 37);
+      $pb.ProtobufEnum.$_initByValueList(values, 38);
   static ClientEnvelope_MsgType? valueOf($core.int value) =>
       value < 0 || value >= _byValue.length ? null : _byValue[value];
 
@@ -322,6 +325,8 @@ class ServerEnvelope_MsgType extends $pb.ProtobufEnum {
       ServerEnvelope_MsgType._(19, _omitEnumNames ? '' : 'JOIN_AV_RESPONSE');
   static const ServerEnvelope_MsgType SERVER_INFO_UPDATED =
       ServerEnvelope_MsgType._(20, _omitEnumNames ? '' : 'SERVER_INFO_UPDATED');
+  static const ServerEnvelope_MsgType HISTORY_RESPONSE =
+      ServerEnvelope_MsgType._(21, _omitEnumNames ? '' : 'HISTORY_RESPONSE');
 
   static const $core.List<ServerEnvelope_MsgType> values =
       <ServerEnvelope_MsgType>[
@@ -346,10 +351,11 @@ class ServerEnvelope_MsgType extends $pb.ProtobufEnum {
     MENTION_READ_LIST_RESPONSE,
     JOIN_AV_RESPONSE,
     SERVER_INFO_UPDATED,
+    HISTORY_RESPONSE,
   ];
 
   static final $core.List<ServerEnvelope_MsgType?> _byValue =
-      $pb.ProtobufEnum.$_initByValueList(values, 20);
+      $pb.ProtobufEnum.$_initByValueList(values, 21);
   static ServerEnvelope_MsgType? valueOf($core.int value) =>
       value < 0 || value >= _byValue.length ? null : _byValue[value];
 

@@ -481,6 +481,53 @@ class ServerConnection extends ChangeNotifier {
   /// 某话题未读数（F-UI-4 角标）
   int unreadOf(String topicId) => _topicUnread[topicId] ?? 0;
 
+  /// 是否正在加载更早历史（防重复触发）
+  bool historyLoading = false;
+
+  /// 是否还有更早的历史消息（服务端 has_more 累计判断）
+  bool hasMoreHistory = true;
+
+  /// 历史消息向前翻页：从当前列表最旧消息的 seq 往前拉取更早消息，
+  /// 插入列表头部并落库（滚动到顶部时由 UI 触发，F-MSG 历史加载）。
+  Future<void> loadMoreHistory() async {
+    if (historyLoading || !hasMoreHistory) return;
+    historyLoading = true;
+    notifyListeners();
+    try {
+      // 最旧消息的 seq（本地可能已有缓存，从缓存最旧值往前）
+      final local = await _local.loadMessages(serverId, currentTopicId);
+      final oldestSeq = local.isEmpty ? 0 : local.first.seq;
+      final resp = await connection.history(currentTopicId, oldestSeq);
+      final incoming = resp.messages.reversed.map((m) => ChatMessage(
+            seq: m.seq.toInt(),
+            serverId: serverId,
+            topicId: m.topicId,
+            msgId: m.msgId,
+            authorId: String.fromCharCodes(m.authorId),
+            authorName: m.authorName,
+            serverTs: m.serverTs.toInt(),
+            content: m.content.text,
+            edited: m.edited,
+            deleted: m.deleted,
+            attachment: m.content.hasAttachment() ? m.content.attachment : null,
+            reactions: m.reactions,
+            mentions: m.mentions,
+            replyTo: m.replyTo,
+          ));
+      if (incoming.isNotEmpty) {
+        await _local.upsertMessages(incoming.toList());
+        await _loadLocal();
+      }
+      // 服务端返回满页才可能有更早的消息
+      hasMoreHistory = resp.hasMore;
+    } catch (_) {
+      // 历史加载失败静默（下次滚动重试）
+    } finally {
+      historyLoading = false;
+      notifyListeners();
+    }
+  }
+
   /// 当前话题是否公告类型（普通成员禁言，F-TOPIC-4）
   bool get currentTopicAnnouncement {
     final t = topics.where((t) => t.topicId == currentTopicId).toList();

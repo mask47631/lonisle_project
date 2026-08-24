@@ -295,6 +295,20 @@ message SyncResponse {
   repeated BroadcastMessage messages = 3;
 }
 
+// 客户端 → 服务器：历史消息向前翻页（加载更早消息）
+message HistoryRequest {
+  string topic_id = 1;
+  uint64 before_seq = 2;           // 返回 seq < before_seq 的消息（0 表示从该话题最新往前）
+  uint32 limit = 3;
+}
+
+// 服务器 → 客户端：历史消息翻页响应
+message HistoryResponse {
+  string topic_id = 1;
+  repeated BroadcastMessage messages = 2; // 降序返回（最新的在前），客户端自行反转
+  bool has_more = 3;               // 是否还有更早的消息
+}
+
 // ============================================================
 // 成员
 // ============================================================
@@ -559,6 +573,7 @@ message ClientEnvelope {
     MARK_MENTION_READ = 35;
     MENTION_READ_LIST = 36;
     JOIN_AV = 37;
+    HISTORY = 38;                // 历史消息向前翻页（加载更早消息）
   }
   MsgType type = 1;
   uint64 request_id = 2;           // 请求 ID，用于关联回执
@@ -589,6 +604,7 @@ message ServerEnvelope {
     MENTION_READ_LIST_RESPONSE = 18; // 已读列表响应（P2）
     JOIN_AV_RESPONSE = 19;           // 音视频加入响应（LiveKit）
     SERVER_INFO_UPDATED = 20;        // 服务器资料变更推送（名称/简介/图标，payload 为 ServerInfo）
+    HISTORY_RESPONSE = 21;           // 历史消息翻页响应（payload 为 HistoryResponse）
   }
   MsgType type = 1;
   uint64 request_id = 2;

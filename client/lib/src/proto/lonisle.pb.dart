@@ -1,6 +1,6 @@
 // This is a generated file - do not edit.
 //
-// Generated from lonisle.proto.
+// Generated from proto/lonisle.proto.
 
 // @dart = 3.3
 
@@ -3002,6 +3002,161 @@ class SyncResponse extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(3)
   $pb.PbList<BroadcastMessage> get messages => $_getList(2);
+}
+
+/// 客户端 → 服务器：历史消息向前翻页（加载更早消息）
+class HistoryRequest extends $pb.GeneratedMessage {
+  factory HistoryRequest({
+    $core.String? topicId,
+    $fixnum.Int64? beforeSeq,
+    $core.int? limit,
+  }) {
+    final result = create();
+    if (topicId != null) result.topicId = topicId;
+    if (beforeSeq != null) result.beforeSeq = beforeSeq;
+    if (limit != null) result.limit = limit;
+    return result;
+  }
+
+  HistoryRequest._();
+
+  factory HistoryRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory HistoryRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'HistoryRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'lonisle'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'topicId')
+    ..a<$fixnum.Int64>(
+        2, _omitFieldNames ? '' : 'beforeSeq', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aI(3, _omitFieldNames ? '' : 'limit', fieldType: $pb.PbFieldType.OU3)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  HistoryRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  HistoryRequest copyWith(void Function(HistoryRequest) updates) =>
+      super.copyWith((message) => updates(message as HistoryRequest))
+          as HistoryRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static HistoryRequest create() => HistoryRequest._();
+  @$core.override
+  HistoryRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static HistoryRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<HistoryRequest>(create);
+  static HistoryRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get topicId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set topicId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasTopicId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearTopicId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get beforeSeq => $_getI64(1);
+  @$pb.TagNumber(2)
+  set beforeSeq($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasBeforeSeq() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearBeforeSeq() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.int get limit => $_getIZ(2);
+  @$pb.TagNumber(3)
+  set limit($core.int value) => $_setUnsignedInt32(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasLimit() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearLimit() => $_clearField(3);
+}
+
+/// 服务器 → 客户端：历史消息翻页响应
+class HistoryResponse extends $pb.GeneratedMessage {
+  factory HistoryResponse({
+    $core.String? topicId,
+    $core.Iterable<BroadcastMessage>? messages,
+    $core.bool? hasMore,
+  }) {
+    final result = create();
+    if (topicId != null) result.topicId = topicId;
+    if (messages != null) result.messages.addAll(messages);
+    if (hasMore != null) result.hasMore = hasMore;
+    return result;
+  }
+
+  HistoryResponse._();
+
+  factory HistoryResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory HistoryResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'HistoryResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'lonisle'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'topicId')
+    ..pPM<BroadcastMessage>(2, _omitFieldNames ? '' : 'messages',
+        subBuilder: BroadcastMessage.create)
+    ..aOB(3, _omitFieldNames ? '' : 'hasMore')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  HistoryResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  HistoryResponse copyWith(void Function(HistoryResponse) updates) =>
+      super.copyWith((message) => updates(message as HistoryResponse))
+          as HistoryResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static HistoryResponse create() => HistoryResponse._();
+  @$core.override
+  HistoryResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static HistoryResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<HistoryResponse>(create);
+  static HistoryResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get topicId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set topicId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasTopicId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearTopicId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $pb.PbList<BroadcastMessage> get messages => $_getList(1);
+
+  @$pb.TagNumber(3)
+  $core.bool get hasMore => $_getBF(2);
+  @$pb.TagNumber(3)
+  set hasMore($core.bool value) => $_setBool(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasHasMore() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearHasMore() => $_clearField(3);
 }
 
 class MemberInfo extends $pb.GeneratedMessage {

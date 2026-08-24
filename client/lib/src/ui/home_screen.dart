@@ -1770,12 +1770,25 @@ class _MessageList extends StatelessWidget {
     }
     // reverse: true 让列表从底部开始，新消息（在列表末尾）自动显示在底部
     final reversed = messages.reversed.toList();
-    return ListView.builder(
-      reverse: true,
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      itemCount: reversed.length,
-      itemBuilder: (context, i) =>
-          _MessageBubble(sc: sc, message: reversed[i]),
+    return NotificationListener<ScrollNotification>(
+      onNotification: (n) {
+        // 滚动到顶部（视觉最旧消息，reverse 时 pixels 接近 maxScrollExtent）
+        // → 触发加载更早历史（F-MSG 历史翻页）
+        if (n.metrics.axis == Axis.vertical &&
+            n.metrics.pixels >= n.metrics.maxScrollExtent - 200 &&
+            sc.hasMoreHistory &&
+            !sc.historyLoading) {
+          sc.loadMoreHistory();
+        }
+        return false;
+      },
+      child: ListView.builder(
+        reverse: true,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        itemCount: reversed.length,
+        itemBuilder: (context, i) =>
+            _MessageBubble(sc: sc, message: reversed[i]),
+      ),
     );
   }
 }
