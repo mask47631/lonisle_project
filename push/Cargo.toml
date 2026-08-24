@@ -38,6 +38,8 @@ rust-embed.workspace = true
 clap.workspace = true
 reqwest.workspace = true
 jsonwebtoken.workspace = true
+axum-server.workspace = true
+rustls.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

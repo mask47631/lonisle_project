@@ -91,6 +91,13 @@ pub trait Storage: Send + Sync {
         service_account_json: &str,
     ) -> Result<(), StorageError>;
 
+    // ---- TLS 证书配置（web 端配置证书文件路径，统一 HTTPS） ----
+    /// 读取 TLS 证书路径配置；返回 (cert_path, key_path)，未配置均为空串。
+    async fn get_tls_config(&self) -> Result<(String, String), StorageError>;
+
+    /// 保存 TLS 证书路径（config 表 tls_cert_path / tls_key_path）。
+    async fn set_tls_config(&self, cert_path: &str, key_path: &str) -> Result<(), StorageError>;
+
     // ---- 黑名单（P1） ----
 
     /// 加入黑名单。
@@ -470,6 +477,33 @@ impl Storage for SqliteStorage {
             ("fcm_refresh_token", refresh_token),
             ("fcm_service_account", service_account_json),
         ];
+        for (k, v) in kv {
+            sqlx::query(
+                "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            )
+            .bind(k)
+            .bind(v)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn get_tls_config(&self) -> Result<(String, String), StorageError> {
+        let rows = sqlx::query("SELECT key, value FROM config WHERE key IN ('tls_cert_path','tls_key_path')")
+            .fetch_all(&self.pool)
+            .await?;
+        let get = |key: &str| -> String {
+            rows.iter()
+                .find(|r| r.get::<String, _>(0) == key)
+                .map(|r| r.get::<String, _>(1))
+                .unwrap_or_default()
+        };
+        Ok((get("tls_cert_path"), get("tls_key_path")))
+    }
+
+    async fn set_tls_config(&self, cert_path: &str, key_path: &str) -> Result<(), StorageError> {
+        let kv = [("tls_cert_path", cert_path), ("tls_key_path", key_path)];
         for (k, v) in kv {
             sqlx::query(
                 "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",

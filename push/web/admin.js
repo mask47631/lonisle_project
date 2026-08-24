@@ -194,6 +194,29 @@ async function saveFcm() {
   fetchFcm();
 }
 
+// ---- TLS 证书配置（统一 HTTPS） ----
+async function fetchTls() {
+  const data = await getJSON("/admin/tls-config");
+  document.getElementById("tls-cert-path").value = data.cert_path || "";
+  document.getElementById("tls-key-path").value = data.key_path || "";
+  const status = data.https
+    ? "✅ HTTPS 已配置（重启服务生效）"
+    : "⚠️ 未配置（当前 HTTP）";
+  document.getElementById("tls-current").textContent =
+    `状态：${status} · 证书 ${data.cert_path || "未设置"} · 私钥 ${data.key_path || "未设置"}`;
+}
+
+async function saveTls() {
+  const body = {
+    cert_path: document.getElementById("tls-cert-path").value.trim(),
+    key_path: document.getElementById("tls-key-path").value.trim(),
+  };
+  const res = await postJSON("/admin/tls-config", body);
+  if (res.ok === false) return alert("保存失败：" + (res.error || "未知错误"));
+  alert(res.https ? "已保存，重启服务后启用 HTTPS" : "已保存，重启服务后回退 HTTP");
+  fetchTls();
+}
+
 // ---- 导航 ----
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -208,6 +231,7 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
     if (page === "blacklist") fetchBlacklist();
     if (page === "directory") fetchDirectory();
     if (page === "fcm") fetchFcm();
+    if (page === "tls") fetchTls();
   });
 });
 
@@ -215,6 +239,7 @@ document.getElementById("rate-save").addEventListener("click", saveRate);
 document.getElementById("mode-save").addEventListener("click", saveMode);
 document.getElementById("blacklist-add").addEventListener("click", addBlacklist);
 document.getElementById("fcm-save").addEventListener("click", saveFcm);
+document.getElementById("tls-save").addEventListener("click", saveTls);
 
 // 初始化
 fetchWhitelist();

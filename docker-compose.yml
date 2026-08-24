@@ -45,10 +45,15 @@ services:
       - "8081:8081"
     volumes:
       - push-data:/data
+      # 证书目录（TLS_CERT/TLS_KEY 指向的文件所在目录，只读挂载）
+      - ${TLS_CERT_DIR:-./certs}:/certs:ro
     environment:
       - LISTEN=0.0.0.0:8081
       - DATA_DIR=/data
       - RATE_PER_MINUTE=${RATE_PER_MINUTE:-2}
+      # TLS 证书路径（统一 HTTPS；也可在管理端「证书配置」页配置，存 DB 重启生效）
+      - TLS_CERT=${TLS_CERT:-}
+      - TLS_KEY=${TLS_KEY:-}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8081/health"]
       interval: 10s

@@ -36,6 +36,7 @@ pub fn build_admin_router(state: Arc<AppState>) -> Router {
         .route("/admin/blacklist/add", post(add_blacklist))
         .route("/admin/blacklist/remove", post(remove_blacklist))
         .route("/admin/fcm-config", get(get_fcm_config).post(set_fcm_config))
+        .route("/admin/tls-config", get(get_tls_config).post(set_tls_config))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             admin_auth,
@@ -212,6 +213,67 @@ async fn set_fcm_config(
         tracing::warn!("FCM 配置不完整（web 管理端），推送仍为 Mock 通道");
     }
     Json(json!({"ok": true, "enabled": enabled})).into_response()
+}
+
+/// 查询当前 TLS 证书配置（返回证书/私钥路径与 HTTPS 状态）
+async fn get_tls_config(State(state): State<Arc<AppState>>) -> Response {
+    match state.storage.get_tls_config().await {
+        Ok((cert_path, key_path)) => {
+            let https = !cert_path.is_empty() && !key_path.is_empty();
+            Json(json!({
+                "ok": true,
+                "https": https,
+                "cert_path": cert_path,
+                "key_path": key_path,
+            }))
+            .into_response()
+        }
+        Err(e) => json_err(&e.to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+struct TlsConfigBody {
+    cert_path: String,
+    key_path: String,
+}
+
+/// 保存 TLS 证书路径（两字段同时为空 = 清空配置回退 HTTP；单字段空保留旧值）；重启生效
+async fn set_tls_config(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<TlsConfigBody>,
+) -> Response {
+    let old = match state.storage.get_tls_config().await {
+        Ok(v) => v,
+        Err(e) => return json_err(&e.to_string()),
+    };
+    let (cert_path, key_path) = if body.cert_path.trim().is_empty() && body.key_path.trim().is_empty()
+    {
+        // 显式清空：回退 HTTP
+        (String::new(), String::new())
+    } else {
+        let cert_path = if body.cert_path.trim().is_empty() {
+            old.0
+        } else {
+            body.cert_path.trim().to_string()
+        };
+        let key_path = if body.key_path.trim().is_empty() {
+            old.1
+        } else {
+            body.key_path.trim().to_string()
+        };
+        (cert_path, key_path)
+    };
+    if let Err(e) = state.storage.set_tls_config(&cert_path, &key_path).await {
+        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"ok": false, "error": e.to_string()}))).into_response();
+    }
+    let https = !cert_path.is_empty() && !key_path.is_empty();
+    if https {
+        tracing::info!("TLS 证书路径已保存（cert: {cert_path}），重启后启用 HTTPS");
+    } else {
+        tracing::warn!("TLS 证书路径已清空，重启后回退 HTTP");
+    }
+    Json(json!({"ok": true, "https": https})).into_response()
 }
 
 #[derive(Deserialize)]

@@ -55,6 +55,16 @@ struct Args {
     /// FCM 服务账号 JSON（Firebase Admin SDK 同款；非空时优先于 OAuth2 方式）
     #[arg(long, default_value = "", env = "FCM_SERVICE_ACCOUNT")]
     fcm_service_account: String,
+
+    // ---- TLS 证书（统一 HTTPS；web 管理端配置优先，缺省保持 HTTP） ----
+
+    /// TLS 证书 PEM 文件路径（与环境变量 TLS_CERT 等效）
+    #[arg(long, default_value = "", env = "TLS_CERT")]
+    tls_cert: String,
+
+    /// TLS 私钥 PEM 文件路径（与环境变量 TLS_KEY 等效）
+    #[arg(long, default_value = "", env = "TLS_KEY")]
+    tls_key: String,
 }
 
 #[tokio::main]
@@ -113,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let mut app_state = AppState::new(
-        storage,
+        storage.clone(),
         Arc::new(VendorRegistry::new(fcm_vendor)),
         args.rate_per_minute,
     );
@@ -135,9 +145,38 @@ async fn main() -> anyhow::Result<()> {
     let router = api::build_router(state.clone()).merge(build_admin_router(state.clone()));
 
     let addr: SocketAddr = args.listen.parse().context("无效监听地址")?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    info!(%addr, "推送服务已启动");
-    axum::serve(listener, router).await?;
+
+    // TLS 证书路径：web 管理端（DB）配置优先，回退命令行/环境变量（统一 HTTPS）
+    let (mut tls_cert, mut tls_key) = (args.tls_cert.clone(), args.tls_key.clone());
+    match storage.get_tls_config().await {
+        Ok((cert, key)) => {
+            if !cert.is_empty() && !key.is_empty() {
+                info!("TLS 证书：使用 web 管理端保存的路径（cert: {cert}）");
+                tls_cert = cert;
+                tls_key = key;
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "读取 TLS 配置失败，使用命令行/环境变量");
+        }
+    }
+
+    if tls_cert.is_empty() || tls_key.is_empty() {
+        // 未配置证书 → HTTP（默认行为，向后兼容）
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        info!(%addr, "推送服务已启动（HTTP）");
+        axum::serve(listener, router).await?;
+    } else {
+        // 配置了证书 → HTTPS（与聊天服务器统一）
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(&tls_cert, &tls_key)
+            .await
+            .context("加载 TLS 证书失败（检查证书/私钥路径与格式）")?;
+        info!(%addr, cert = %tls_cert, "推送服务已启动（HTTPS）");
+        axum_server::bind_rustls(addr, tls_config)
+            .serve(router.into_make_service())
+            .await?;
+    }
 
     Ok(())
 }
