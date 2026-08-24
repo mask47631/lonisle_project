@@ -77,6 +77,11 @@ class ConnectionService {
   /// 重连成功后的回调（由上层设置，用于重做 Hello/Join/Sync 握手）
   Future<void> Function()? onReconnected;
 
+  /// 证书更换确认回调（重连时遇到 TOFU 公钥不匹配触发，由上层弹窗询问；
+  /// 返回 true = 用户信任新证书）。仅连接成功后设置。
+  Future<bool> Function(String host, int port, String fingerprint, String? spki)?
+      onTofuMismatch;
+
   Future<void> connect(
     String host,
     int port, {
@@ -103,12 +108,17 @@ class ConnectionService {
         Uri.parse(url),
         customClient: tofu.client,
       );
+      // 等待握手完成（TLS 证书回调在握手期间执行，之后 observedFingerprint /
+      // mismatchMessage 才可用）。IOWebSocketChannel.connect 异步立即返回，
+      // 若不等待，TOFU pin 会在握手前执行导致指纹永远写不进去。
+      await channel.ready;
     } catch (e) {
       _setStatus(ConnectionStatus.disconnected);
       if (tofu.mismatchMessage != null) {
         throw TofuMismatchException(
           tofu.mismatchMessage!,
           tofu.observedFingerprint ?? '',
+          tofu.observedSpki,
         );
       }
       rethrow;
@@ -122,12 +132,14 @@ class ConnectionService {
     _setStatus(ConnectionStatus.connected);
     _retryDelay = 1; // 连接成功重置退避
 
-    // 首次连接（TOFU）：钉住观测到的指纹
+    // TOFU 钉住（握手已完成后 observed 已就绪）：
+    // - 首次连接：pin 新指纹（DER + SPKI）
+    // - 同公钥续期：静默更新钉住指纹（证书到期自动续期不打扰用户）
     final observed = tofu.observedFingerprint;
     if (observed != null) {
       final existing = await Tofu.pinned(_host, _port);
-      if (existing == null) {
-        await Tofu.pin(_host, _port, observed);
+      if (existing == null || tofu.renewed) {
+        await Tofu.pin(_host, _port, observed, tofu.observedSpki);
       }
     }
   }
@@ -154,8 +166,23 @@ class ConnectionService {
         await _open();
         // 重连成功：重做 Hello/Join/Sync 完整握手（否则是未认证会话）
         await onReconnected?.call();
-      } catch (_) {
-        // 失败：继续退避重连
+      } catch (e) {
+        if (e is TofuMismatchException && onTofuMismatch != null) {
+          // 服务器证书更换：询问用户是否信任新证书；确认后清除旧信任立即重连
+          final ok = await onTofuMismatch!(
+            _host,
+            _port,
+            e.actualFingerprint,
+            e.actualSpki,
+          );
+          if (ok) {
+            await Tofu.unpin(_host, _port);
+            _retryDelay = 1;
+            _scheduleReconnect();
+            return;
+          }
+        }
+        // 失败（或用户拒绝信任）：继续退避重连
         _onDisconnected();
       }
     });

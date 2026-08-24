@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/av_session.dart';
@@ -6,7 +7,12 @@ import '../services/connection_service.dart';
 import '../services/identity_service.dart';
 import '../services/local_store.dart';
 import '../services/push_service.dart';
+import '../services/tofu_http.dart';
+import '../theme.dart';
 import 'server_connection.dart';
+
+/// 全局 Navigator Key（证书更换确认弹窗等在无页面 context 处使用）
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 /// 应用全局状态（多服务器聚合）
 class AppState extends ChangeNotifier {
@@ -112,6 +118,9 @@ class AppState extends ChangeNotifier {
       if (_servers.containsKey(serverId)) continue;
       try {
         final connection = ConnectionService();
+        // 重连时证书更换（TOFU 公钥不匹配）→ 弹窗询问是否信任新证书
+        connection.onTofuMismatch =
+            (h, p, fp, spki) => confirmRetrust(h, p, fp);
         final sc = ServerConnection(
           serverId: serverId,
           serverName: (row['name'] as String?)?.isNotEmpty == true
@@ -122,7 +131,21 @@ class AppState extends ChangeNotifier {
           port: port,
         );
         // 失败不阻塞其他服务器恢复（连接层有断线重连退避）
-        sc.connectAndJoin().catchError((_) => false);
+        sc.connectAndJoin().catchError((e) {
+          // 服务器证书已更换（TOFU 公钥不匹配）：弹窗确认后重新信任并重连
+          if (e is TofuMismatchException) {
+            final fp = e.actualFingerprint;
+            confirmRetrust(host, port, fp).then((ok) async {
+              if (ok) {
+                await Tofu.unpin(host, port);
+                try {
+                  await sc.connectAndJoin();
+                } catch (_) {}
+              }
+            });
+          }
+          return false;
+        });
         _servers[serverId] = sc;
       } catch (_) {}
     }
@@ -148,6 +171,9 @@ class AppState extends ChangeNotifier {
     String expectedFingerprint = '',
   }) async {
     final connection = ConnectionService();
+    // 重连时证书更换（TOFU 公钥不匹配）→ 弹窗询问是否信任新证书
+    connection.onTofuMismatch =
+        (h, p, fp, spki) => confirmRetrust(h, p, fp);
     final serverId = 'pending-$host-$port'; // 暂用占位，hello 后更新
     final sc = ServerConnection(
       serverId: serverId,
@@ -182,6 +208,66 @@ class AppState extends ChangeNotifier {
 
     notifyListeners();
     return sc;
+  }
+
+  /// 服务器证书已更换（TOFU 公钥不匹配）：弹窗询问是否信任新证书并重连。
+  /// 返回 true = 已重新信任并重连成功。
+  Future<bool> confirmRetrust(
+    String host,
+    int port,
+    String newFingerprint,
+  ) async {
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) return false;
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: LonIsleTheme.bg2,
+        title: const Text('服务器证书已更换',
+            style: TextStyle(color: LonIsleTheme.textWhite)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('检测到 $host:$port 的证书与已保存的指纹不一致。',
+                  style: const TextStyle(color: LonIsleTheme.textDim)),
+              const SizedBox(height: 8),
+              const Text('可能原因：证书到期自动续期（同公钥会静默更新，无需确认）、'
+                  '服务器更换证书/重建、或存在中间人攻击。',
+                  style: TextStyle(color: LonIsleTheme.textDim, fontSize: 12)),
+              const SizedBox(height: 12),
+              const Text('新证书指纹：', style: TextStyle(color: LonIsleTheme.textDim)),
+              Text(newFingerprint,
+                  style: const TextStyle(
+                      color: LonIsleTheme.textMuted,
+                      fontSize: 12,
+                      fontFamily: 'monospace')),
+              const SizedBox(height: 12),
+              const Text('确认信任新证书并重新连接？',
+                  style: TextStyle(color: LonIsleTheme.textWhite)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('信任并重连',
+                style: TextStyle(color: LonIsleTheme.amber)),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  /// 清除某服务器的 TOFU 信任（换证书后重新信任，F-SID-3）
+  Future<void> clearServerTrust(String host, int port) async {
+    await Tofu.unpin(host, port);
   }
 
   /// 切换到某个服务器

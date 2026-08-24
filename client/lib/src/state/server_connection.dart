@@ -369,7 +369,7 @@ class ServerConnection extends ChangeNotifier {
     if (m.mentions.isNotEmpty) _notifyChanged();
     _local.upsertMessage(m);
     _cursor = m.seq;
-    _local.writeCursor(serverId, _cursor);
+    _local.writeCursor(serverId, currentTopicId, _cursor);
     notifyListeners();
   }
 
@@ -438,7 +438,8 @@ class ServerConnection extends ChangeNotifier {
   }
 
   Future<void> _sync() async {
-    _cursor = await _local.readCursor(serverId);
+    // 游标按话题独立（服务端 seq 按话题递增），避免跨话题污染跳过消息
+    _cursor = await _local.readCursor(serverId, currentTopicId);
     final resp = await connection.sync(currentTopicId, _cursor);
     // 本地已有消息 ID 集合（F-MSG-14：删除事件对无原消息的设备不可见）
     final localIds = (await _local.loadMessages(serverId, currentTopicId))
@@ -473,7 +474,7 @@ class ServerConnection extends ChangeNotifier {
     await _loadLocal();
     if (resp.latestSeq > _cursor) {
       _cursor = resp.latestSeq.toInt();
-      await _local.writeCursor(serverId, _cursor);
+      await _local.writeCursor(serverId, currentTopicId, _cursor);
     }
   }
 
@@ -498,21 +499,21 @@ class ServerConnection extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 发送文本（可选携带回复引用）
-  Future<void> sendText(String text, {String replyTo = ''}) async {
+  /// 发送文本（可选携带回复引用）；返回是否发送成功。
+  /// 失败时乐观消息保留在列表并标记 failed（UI 显示失败标记 + 可重试）。
+  Future<bool> sendText(String text, {String replyTo = ''}) async {
     final content = text.trim();
-    if (content.isEmpty) return;
-    final identity = IdentityService.instance.loadIdentity();
-    final id = await identity;
-    if (id == null) return;
+    if (content.isEmpty) return false;
+    final identity = await IdentityService.instance.loadIdentity();
+    if (identity == null) return false;
 
     final optimistic = ChatMessage(
       seq: -DateTime.now().millisecondsSinceEpoch,
       serverId: serverId,
       topicId: currentTopicId,
       msgId: 'local-${DateTime.now().microsecondsSinceEpoch}',
-      authorId: id.userId,
-      authorName: id.displayName,
+      authorId: identity.userId,
+      authorName: identity.displayName,
       serverTs: DateTime.now().millisecondsSinceEpoch ~/ 1000,
       content: content,
       pending: true,
@@ -521,8 +522,45 @@ class ServerConnection extends ChangeNotifier {
     messages.add(optimistic);
     notifyListeners();
 
-    await connection.sendText(currentTopicId, content, replyTo: replyTo);
-    messages.removeWhere((m) => m.pending && m.content == content);
+    try {
+      await connection.sendText(currentTopicId, content, replyTo: replyTo);
+      // 发送成功：移除本地乐观消息（服务器回执会带权威消息回来）
+      messages.removeWhere((m) => m.pending && m.content == content);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      // 发送失败：乐观消息标记 failed（保留，供 UI 显示失败标记与重试）
+      final i = messages.indexWhere((m) => m.pending && m.content == content);
+      if (i >= 0) messages[i] = messages[i].copyWith(failed: true);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// 重试失败的本地消息（F-SEND 失败恢复）：重新发送，成功后清除对应乐观消息
+  Future<bool> retryFailedMessage(ChatMessage msg) async {
+    if (!msg.failed) return false;
+    final i = messages.indexWhere((m) => m.msgId == msg.msgId);
+    if (i >= 0) messages[i] = messages[i].copyWith(pending: true, failed: false);
+    notifyListeners();
+
+    try {
+      await connection.sendText(msg.topicId, msg.content, replyTo: msg.replyTo);
+      messages.removeWhere(
+          (m) => (m.pending || m.failed) && m.topicId == msg.topicId && m.content == msg.content);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      final j = messages.indexWhere((m) => m.msgId == msg.msgId);
+      if (j >= 0) messages[j] = messages[j].copyWith(failed: true);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// 删除本地失败的乐观消息（不发送删除事件，仅本地清理）
+  void removeFailedMessage(ChatMessage msg) {
+    messages.removeWhere((m) => m.msgId == msg.msgId);
     notifyListeners();
   }
 

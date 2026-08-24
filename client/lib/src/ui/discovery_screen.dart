@@ -49,7 +49,8 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       _error = null;
     });
     try {
-      final client = HttpClient();
+      // 跳过证书校验：自建推送服务可能使用自签证书
+      final client = HttpClient()..badCertificateCallback = (cert, host, port) => true;
       final request = await client.getUrl(
         Uri.parse('${LonIsleConfig.pushServiceUrl}/directory'),
       );

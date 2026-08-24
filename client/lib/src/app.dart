@@ -38,6 +38,7 @@ class _LonIsleAppState extends State<LonIsleApp> {
     return MaterialApp(
       title: 'LonIsle',
       debugShowCheckedModeBanner: false,
+      navigatorKey: appNavigatorKey,
       theme: LonIsleTheme.dark(),
       home: !_initialized
           ? const _SplashScreen()

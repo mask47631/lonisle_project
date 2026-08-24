@@ -74,7 +74,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _inputController.clear();
     final sc = AppState.instance.activeServer;
     if (sc != null) {
-      await sc.sendText(text, replyTo: _replyTo?.msgId ?? '');
+      final ok = await sc.sendText(text, replyTo: _replyTo?.msgId ?? '');
+      if (!ok && mounted) {
+        // 发送失败：恢复输入框内容（便于修改重发）+ 明确提示
+        _inputController.text = text;
+        _inputController.selection = TextSelection.collapsed(offset: text.length);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('消息发送失败，已恢复输入（可点击失败消息重试）')),
+        );
+      }
     }
     if (_replyTo != null) setState(() => _replyTo = null);
   }
@@ -1884,11 +1892,16 @@ class _MessageBubble extends StatelessWidget {
                       const Text('(已编辑)',
                           style: TextStyle(fontSize: 11, color: LonIsleTheme.textDim)),
                     ],
-                    if (message.pending) ...[
+                    if (message.pending && !message.failed) ...[
                       const SizedBox(width: 8),
                       const Icon(Icons.schedule, size: 12, color: LonIsleTheme.textDim),
                     ],
-                    if (isSelf && !message.pending) ...[
+                    if (message.failed) ...[
+                      const SizedBox(width: 8),
+                      const Text('发送失败',
+                          style: TextStyle(fontSize: 11, color: LonIsleTheme.red)),
+                    ],
+                    if (isSelf && (!message.pending || message.failed)) ...[
                       const Spacer(),
                       _MessageOps(sc: sc, message: message),
                     ],
@@ -2625,12 +2638,28 @@ class _MessageOps extends StatelessWidget {
               ),
             );
           }
+        } else if (v == 'retry') {
+          // 重试发送失败的本地消息
+          final ok = await sc.retryFailedMessage(message);
+          if (context.mounted && !ok) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('重试发送失败，请检查网络后重试')),
+            );
+          }
+        } else if (v == 'discard') {
+          // 删除本地失败的乐观消息
+          sc.removeFailedMessage(message);
         }
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(value: 'reply', child: Text('回复')),
-        const PopupMenuItem(value: 'edit', child: Text('编辑')),
-        const PopupMenuItem(value: 'delete', child: Text('删除')),
+        if (message.failed) ...[
+          const PopupMenuItem(value: 'retry', child: Text('重试发送')),
+          const PopupMenuItem(value: 'discard', child: Text('丢弃消息')),
+        ] else ...[
+          const PopupMenuItem(value: 'reply', child: Text('回复')),
+          const PopupMenuItem(value: 'edit', child: Text('编辑')),
+          const PopupMenuItem(value: 'delete', child: Text('删除')),
+        ],
         // 自己的消息且服务端解析出 @提及时可查看已读（F-MSG-10）
         if (message.authorId == sc.selfMember?.userId && message.mentions.isNotEmpty)
           const PopupMenuItem(value: 'reads', child: Text('查看已读')),

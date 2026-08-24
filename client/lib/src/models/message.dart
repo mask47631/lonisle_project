@@ -15,6 +15,7 @@ class ChatMessage {
   final int serverTs;
   final String content;
   final bool pending; // 是否本地待发送（乐观显示）
+  final bool failed; // 是否发送失败（乐观消息保留在列表，可重试）
   final bool edited; // 是否被编辑过
   final bool deleted; // 是否已删除（占位）
   final pb.Attachment? attachment; // 附件元数据（M5）
@@ -32,6 +33,7 @@ class ChatMessage {
     required this.serverTs,
     required this.content,
     this.pending = false,
+    this.failed = false,
     this.edited = false,
     this.deleted = false,
     this.attachment,
@@ -39,6 +41,34 @@ class ChatMessage {
     this.mentions = '',
     this.replyTo = '',
   });
+
+  /// 复制并替换部分字段（乐观消息失败标记等）
+  ChatMessage copyWith({
+    bool? pending,
+    bool? failed,
+    bool? edited,
+    bool? deleted,
+    String? content,
+    String? mentions,
+  }) =>
+      ChatMessage(
+        seq: seq,
+        serverId: serverId,
+        topicId: topicId,
+        msgId: msgId,
+        authorId: authorId,
+        authorName: authorName,
+        serverTs: serverTs,
+        content: content ?? this.content,
+        pending: pending ?? this.pending,
+        failed: failed ?? this.failed,
+        edited: edited ?? this.edited,
+        deleted: deleted ?? this.deleted,
+        attachment: attachment,
+        reactions: reactions,
+        mentions: mentions ?? this.mentions,
+        replyTo: replyTo,
+      );
 
   factory ChatMessage.fromRow(Map<String, Object?> row) => ChatMessage(
         seq: row['seq'] as int,
@@ -50,6 +80,7 @@ class ChatMessage {
         serverTs: row['server_ts'] as int,
         content: row['content'] as String,
         pending: (row['pending'] as int? ?? 0) != 0,
+        failed: (row['failed'] as int? ?? 0) != 0,
         edited: (row['edited'] as int? ?? 0) != 0,
         deleted: (row['deleted'] as int? ?? 0) != 0,
         mentions: row['mentions'] as String? ?? '',
@@ -68,6 +99,7 @@ class ChatMessage {
         'server_ts': serverTs,
         'content': content,
         'pending': pending ? 1 : 0,
+        'failed': failed ? 1 : 0,
         'edited': edited ? 1 : 0,
         'deleted': deleted ? 1 : 0,
         'mentions': mentions,

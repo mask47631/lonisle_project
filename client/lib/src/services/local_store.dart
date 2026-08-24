@@ -20,7 +20,7 @@ class LocalStore {
   static final LocalStore instance = LocalStore._();
 
   static const _dbName = 'lonisle_client.db';
-  static const _dbVersion = 9;
+  static const _dbVersion = 11;
 
   Database? _db;
 
@@ -156,7 +156,8 @@ class LocalStore {
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE messages (
-            seq INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seq INTEGER NOT NULL,
             server_id TEXT NOT NULL,
             topic_id TEXT NOT NULL,
             msg_id TEXT NOT NULL,
@@ -165,19 +166,23 @@ class LocalStore {
             server_ts INTEGER NOT NULL,
             content TEXT NOT NULL,
             pending INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
             edited INTEGER NOT NULL DEFAULT 0,
             deleted INTEGER NOT NULL DEFAULT 0,
             mentions TEXT NOT NULL DEFAULT '',
             reply_to TEXT NOT NULL DEFAULT '',
             reactions TEXT NOT NULL DEFAULT '',
             attachment TEXT NOT NULL DEFAULT '',
+            UNIQUE(server_id, topic_id, seq),
             UNIQUE(server_id, author_id, msg_id)
           )
         ''');
         await db.execute('''
           CREATE TABLE cursors (
-            server_id TEXT PRIMARY KEY,
-            last_seq INTEGER NOT NULL
+            server_id TEXT NOT NULL,
+            topic_id TEXT NOT NULL,
+            last_seq INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (server_id, topic_id)
           )
         ''');
         await db.execute('''
@@ -189,13 +194,13 @@ class LocalStore {
             PRIMARY KEY (server_id, topic_id)
           )
         ''');
-        // FTS5 全文索引（本地搜索，M5）
+        // FTS5 全文索引（本地搜索，M5）；content_rowid 对应 messages.id
         await db.execute('''
           CREATE VIRTUAL TABLE messages_fts USING fts5(
             content,
             author_name,
             content='messages',
-            content_rowid='seq'
+            content_rowid='id'
           )
         ''');
         // 吊销证明（跨成员被动学习，F-DEV-8；跨服务器中继用）
@@ -282,6 +287,75 @@ class LocalStore {
           // 清空游标触发全量重同步：旧消息的附件元数据此前未持久化，
           // 需从服务端重新拉取补齐（upsert 幂等，消息不重复）
           await db.delete('cursors');
+        }
+        if (oldVersion < 10) {
+          // 修复两个丢消息根因：
+          // 1) 服务端 seq 按话题独立递增，但 messages 表用 seq 作全局主键，
+          //    不同话题相同 seq 会互相覆盖 → 重建为自增 id 主键 + (server_id,topic_id,seq) 复合唯一
+          // 2) 游标按 server_id 全局单值，跨话题污染导致增量同步跳过消息
+          //    → 重建为 (server_id, topic_id) 复合主键，游标按话题独立
+          await db.execute('ALTER TABLE messages RENAME TO messages_old');
+          await db.execute('''
+            CREATE TABLE messages (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              seq INTEGER NOT NULL,
+              server_id TEXT NOT NULL,
+              topic_id TEXT NOT NULL,
+              msg_id TEXT NOT NULL,
+              author_id TEXT NOT NULL,
+              author_name TEXT NOT NULL,
+              server_ts INTEGER NOT NULL,
+              content TEXT NOT NULL,
+              pending INTEGER NOT NULL DEFAULT 0,
+              edited INTEGER NOT NULL DEFAULT 0,
+              deleted INTEGER NOT NULL DEFAULT 0,
+              mentions TEXT NOT NULL DEFAULT '',
+              reply_to TEXT NOT NULL DEFAULT '',
+              reactions TEXT NOT NULL DEFAULT '',
+              attachment TEXT NOT NULL DEFAULT '',
+              UNIQUE(server_id, topic_id, seq),
+              UNIQUE(server_id, author_id, msg_id)
+            )
+          ''');
+          await db.execute('''
+            INSERT INTO messages
+              (seq, server_id, topic_id, msg_id, author_id, author_name,
+               server_ts, content, pending, edited, deleted,
+               mentions, reply_to, reactions, attachment)
+            SELECT seq, server_id, topic_id, msg_id, author_id, author_name,
+               server_ts, content, pending, edited, deleted,
+               mentions, reply_to, reactions, attachment
+            FROM messages_old
+          ''');
+          await db.execute('DROP TABLE messages_old');
+          // FTS 重建（content_rowid 由 seq 改为 id）
+          await db.execute('DROP TABLE messages_fts');
+          await db.execute('''
+            CREATE VIRTUAL TABLE messages_fts USING fts5(
+              content,
+              author_name,
+              content='messages',
+              content_rowid='id'
+            )
+          ''');
+          await db.execute(
+              "INSERT INTO messages_fts(messages_fts) VALUES('rebuild')");
+          // 游标重建：按 (server_id, topic_id)（旧全局游标可能被污染，作废）
+          await db.execute('DROP TABLE cursors');
+          await db.execute('''
+            CREATE TABLE cursors (
+              server_id TEXT NOT NULL,
+              topic_id TEXT NOT NULL,
+              last_seq INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY (server_id, topic_id)
+            )
+          ''');
+        }
+        if (oldVersion < 11) {
+          // 上一轮「发送失败提示」在 ChatMessage.toRow 输出 failed 列，
+          // 但建表未加该列导致所有消息落库失败（no column named failed）→ 补列
+          await db.execute(
+              "ALTER TABLE messages ADD COLUMN failed INTEGER NOT NULL DEFAULT 0");
         }
       },
     );
@@ -442,24 +516,24 @@ class LocalStore {
         .toList();
   }
 
-  /// 读取某服务器的游标
-  Future<int> readCursor(String serverId) async {
+  /// 读取某服务器某话题的同步游标（游标按话题独立，F-SYNC）
+  Future<int> readCursor(String serverId, String topicId) async {
     final d = await db;
     final rows = await d.query(
       'cursors',
-      where: 'server_id = ?',
-      whereArgs: [serverId],
+      where: 'server_id = ? AND topic_id = ?',
+      whereArgs: [serverId, topicId],
     );
     if (rows.isEmpty) return 0;
     return rows.first['last_seq'] as int;
   }
 
-  /// 更新某服务器的游标
-  Future<void> writeCursor(String serverId, int lastSeq) async {
+  /// 更新某服务器某话题的同步游标
+  Future<void> writeCursor(String serverId, String topicId, int lastSeq) async {
     final d = await db;
     await d.insert(
       'cursors',
-      {'server_id': serverId, 'last_seq': lastSeq},
+      {'server_id': serverId, 'topic_id': topicId, 'last_seq': lastSeq},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -551,7 +625,7 @@ class LocalStore {
     final d = await db;
     final rows = await d.rawQuery('''
       SELECT m.* FROM messages_fts fts
-      JOIN messages m ON m.seq = fts.rowid
+      JOIN messages m ON m.id = fts.rowid
       WHERE messages_fts MATCH ?
       ORDER BY m.seq DESC
       LIMIT 100

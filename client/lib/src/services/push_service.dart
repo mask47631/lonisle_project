@@ -74,7 +74,9 @@ class PushService {
   Future<bool> serverOnline() async {
     try {
       final client = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 3);
+        ..connectionTimeout = const Duration(seconds: 3)
+        // 自建推送服务可能使用自签证书（与聊天服务器同款 TOFU 模型），跳过证书校验
+        ..badCertificateCallback = (cert, host, port) => true;
       final request = await client
           .getUrl(Uri.parse('${LonIsleConfig.pushServiceUrl}/health'));
       final response = await request.close();
@@ -109,7 +111,8 @@ class PushService {
     final (vendor, token) = await _resolveToken();
 
     try {
-      final client = HttpClient();
+      // 跳过证书校验：自建推送服务可能使用自签证书
+      final client = HttpClient()..badCertificateCallback = (cert, host, port) => true;
       final request = await client.postUrl(
         Uri.parse('${LonIsleConfig.pushServiceUrl}/register'),
       );
@@ -147,7 +150,8 @@ class PushService {
 
     // 上报：server_id 逐个上报（对每个已加入服务器）
     try {
-      final client = HttpClient();
+      // 跳过证书校验：自建推送服务可能使用自签证书
+      final client = HttpClient()..badCertificateCallback = (cert, host, port) => true;
       for (final serverId in _knownServerIds) {
         final request = await client.postUrl(
           Uri.parse('${LonIsleConfig.pushServiceUrl}/mute'),
