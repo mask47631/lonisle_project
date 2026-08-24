@@ -42,6 +42,14 @@ struct Args {
     #[arg(long, default_value = "", env = "LONISLE_ADMIN_TOKEN")]
     admin_token: String,
 
+    /// TLS 证书 PEM 文件路径（web 管理端配置优先；未配置则自动生成自签证书）
+    #[arg(long, default_value = "", env = "TLS_CERT")]
+    tls_cert: String,
+
+    /// TLS 私钥 PEM 文件路径（web 管理端配置优先；未配置则自动生成自签证书）
+    #[arg(long, default_value = "", env = "TLS_KEY")]
+    tls_key: String,
+
     /// 密钥备份导出路径（加密备份服务器密钥对，F-SID-5）
     #[arg(long)]
     backup_key: Option<PathBuf>,
@@ -183,8 +191,29 @@ async fn main() -> anyhow::Result<()> {
     // 管理 API Token：参数/环境变量 > 数据目录持久化 > 自动生成
     let admin_token = load_or_generate_admin_token(&args.data_dir, &args.admin_token)?;
 
-    // TLS（F-SID-2）：自签证书绑定服务器身份密钥对
-    let tls = lonisle_server::tls::load_or_generate(&args.data_dir)?;
+    // TLS（F-SID-2）：web 管理端配置的证书路径优先 → 命令行/环境变量 → 自动生成自签
+    let mut tls_cert_path = args.tls_cert.clone();
+    let mut tls_key_path = args.tls_key.clone();
+    match storage.get_tls_config().await {
+        Ok((cert, key)) => {
+            if !cert.is_empty() && !key.is_empty() {
+                info!("TLS 证书：使用 web 管理端保存的路径（cert: {cert}）");
+                tls_cert_path = cert;
+                tls_key_path = key;
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "读取 TLS 配置失败，使用命令行/环境变量");
+        }
+    }
+    let tls = if !tls_cert_path.is_empty() && !tls_key_path.is_empty() {
+        lonisle_server::tls::load_external(
+            std::path::Path::new(&tls_cert_path),
+            std::path::Path::new(&tls_key_path),
+        )?
+    } else {
+        lonisle_server::tls::load_or_generate(&args.data_dir)?
+    };
     println!("==================================================");
     println!(" LonIsle 服务器证书指纹（邀请链接 # 后缀，F-JOIN-7）：");
     println!(" {}", tls.fingerprint);

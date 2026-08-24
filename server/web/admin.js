@@ -381,6 +381,9 @@ async function fetchAdvanced() {
     document.getElementById("livekit-url").value = lk.url || "";
     document.getElementById("livekit-key").value = lk.api_key || "";
   } catch (e) {}
+  try {
+    fetchTls();
+  } catch (e) {}
 }
 
 async function saveMigrate() {
@@ -424,6 +427,27 @@ async function saveLiveKit() {
     api_secret: document.getElementById("livekit-secret").value.trim(),
   }, true);
   alert("LiveKit 配置已保存");
+}
+
+// ---- TLS 证书配置（HTTPS 外部证书，重启生效） ----
+async function fetchTls() {
+  const data = await getJSON("/api/tls-config");
+  document.getElementById("tls-cert-path").value = data.cert_path || "";
+  document.getElementById("tls-key-path").value = data.key_path || "";
+  const status = data.external
+    ? "✅ 外部证书已配置（重启服务生效）"
+    : "⚠️ 未配置（当前使用自签证书）";
+  document.getElementById("tls-current").textContent =
+    `状态：${status} · 证书 ${data.cert_path || "自签自动生成"} · 私钥 ${data.key_path || "—"}`;
+}
+
+async function saveTls() {
+  await postJSON("/api/tls-config", {
+    cert_path: document.getElementById("tls-cert-path").value.trim(),
+    key_path: document.getElementById("tls-key-path").value.trim(),
+  });
+  alert("证书路径已保存，重启服务后生效");
+  fetchTls();
 }
 
 // ---- 数据导出（F-PERM-2a，高危：需鉴权 + 二次确认头，不能用裸链接跳转） ----
@@ -544,6 +568,7 @@ document.getElementById("migrate-save").addEventListener("click", saveMigrate);
 document.getElementById("limits-save").addEventListener("click", saveLimits);
 document.getElementById("mention-read-save").addEventListener("click", saveMentionRead);
 document.getElementById("livekit-save").addEventListener("click", saveLiveKit);
+document.getElementById("tls-save").addEventListener("click", saveTls);
 document.getElementById("clear-topic-btn").addEventListener("click", clearTopic);
 document.getElementById("export-json").addEventListener("click", () => downloadExport(false));
 document.getElementById("export-zip").addEventListener("click", () => downloadExport(true));

@@ -78,6 +78,23 @@ pub fn load_or_generate(data_dir: &Path) -> anyhow::Result<TlsMaterial> {
     })
 }
 
+/// 从外部证书文件加载（web 管理端配置的证书路径，如 Let's Encrypt fullchain/privkey）。
+/// 与自签证书同样计算指纹供客户端 TOFU 钉住。
+pub fn load_external(cert_path: &Path, key_path: &Path) -> anyhow::Result<TlsMaterial> {
+    let cert_pem = std::fs::read_to_string(cert_path)
+        .with_context(|| format!("读取 TLS 证书失败: {}", cert_path.display()))?;
+    let key_pem = std::fs::read_to_string(key_path)
+        .with_context(|| format!("读取 TLS 私钥失败: {}", key_path.display()))?;
+    let der = pem_to_der(&cert_pem).context("解析 TLS 证书失败")?;
+    let fingerprint = hex::encode(sha2::Sha256::digest(&der));
+    tracing::info!(fingerprint = %fingerprint, cert = %cert_path.display(), "已加载外部 TLS 证书");
+    Ok(TlsMaterial {
+        cert_pem,
+        key_pem,
+        fingerprint,
+    })
+}
+
 /// 从 PEM 文本提取首个 CERTIFICATE 块的 DER 字节。
 fn pem_to_der(pem: &str) -> anyhow::Result<Vec<u8>> {
     let mut in_block = false;

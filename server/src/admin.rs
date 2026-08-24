@@ -111,6 +111,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/settings", get(api_settings))
         .route("/api/settings/update", post(api_update_settings))
         .route("/api/settings/icon", post(api_upload_icon))
+        .route("/api/tls-config", get(api_get_tls_config).post(api_set_tls_config))
         .route("/api/migrate", get(api_get_migrate))
         .route("/api/migrate/update", post(api_set_migrate))
         .route("/api/limits", get(api_get_limits))
@@ -793,6 +794,69 @@ async fn api_upload_icon(
         }
         _ => Html(json!({"ok": false, "error": "服务器元数据未初始化"}).to_string()),
     }
+}
+
+/// 查询当前 TLS 证书配置（证书/私钥路径 + HTTPS 是否使用外部证书）
+async fn api_get_tls_config(State(state): State<Arc<AppState>>) -> Html<String> {
+    match state.storage.get_tls_config().await {
+        Ok((cert_path, key_path)) => {
+            let external = !cert_path.is_empty() && !key_path.is_empty();
+            Html(
+                json!({
+                    "ok": true,
+                    "external": external,
+                    "cert_path": cert_path,
+                    "key_path": key_path,
+                })
+                .to_string(),
+            )
+        }
+        Err(e) => Html(json!({"ok": false, "error": e.to_string()}).to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+struct TlsConfigBody {
+    cert_path: String,
+    key_path: String,
+}
+
+/// 保存 TLS 证书路径（两字段同时为空 = 清空配置恢复自签；单字段空保留旧值）；重启生效
+async fn api_set_tls_config(
+    State(state): State<Arc<AppState>>,
+    axum::Json(body): axum::Json<TlsConfigBody>,
+) -> Html<String> {
+    let old = match state.storage.get_tls_config().await {
+        Ok(v) => v,
+        Err(e) => return Html(json!({"ok": false, "error": e.to_string()}).to_string()),
+    };
+    let (cert_path, key_path) = if body.cert_path.trim().is_empty() && body.key_path.trim().is_empty()
+    {
+        // 显式清空：恢复自签证书
+        (String::new(), String::new())
+    } else {
+        let cert_path = if body.cert_path.trim().is_empty() {
+            old.0
+        } else {
+            body.cert_path.trim().to_string()
+        };
+        let key_path = if body.key_path.trim().is_empty() {
+            old.1
+        } else {
+            body.key_path.trim().to_string()
+        };
+        (cert_path, key_path)
+    };
+    if let Err(e) = state.storage.set_tls_config(&cert_path, &key_path).await {
+        return Html(json!({"ok": false, "error": e.to_string()}).to_string());
+    }
+    let external = !cert_path.is_empty() && !key_path.is_empty();
+    if external {
+        tracing::info!("TLS 证书路径已保存（cert: {cert_path}），重启后启用外部证书");
+    } else {
+        tracing::warn!("TLS 证书路径已清空，重启后回退自签证书");
+    }
+    Html(json!({"ok": true, "external": external}).to_string())
 }
 
 /// 图片魔数嗅探（png/jpg/gif/webp）

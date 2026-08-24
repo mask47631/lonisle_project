@@ -397,6 +397,12 @@ pub trait Storage: Send + Sync {
     /// 读取服务器元数据。
     async fn get_server_meta(&self) -> Result<Option<ServerMeta>, StorageError>;
 
+    /// 读取 TLS 证书路径配置；返回 (cert_path, key_path)，未配置均为空串。
+    async fn get_tls_config(&self) -> Result<(String, String), StorageError>;
+
+    /// 保存 TLS 证书路径（server_meta 表 tls_cert_path / tls_key_path）。
+    async fn set_tls_config(&self, cert_path: &str, key_path: &str) -> Result<(), StorageError>;
+
     /// 写入 Owner 认领码哈希（F-PERM-1）。
     async fn set_owner_claim_hash(&self, hash: &str) -> Result<(), StorageError>;
 
@@ -1458,6 +1464,36 @@ impl Storage for SqliteStorage {
             livekit_api_secret,
             icon,
         }))
+    }
+
+    async fn get_tls_config(&self) -> Result<(String, String), StorageError> {
+        let rows = sqlx::query(
+            "SELECT key, value FROM server_meta WHERE key IN ('tls_cert_path','tls_key_path')",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let get = |key: &str| -> String {
+            rows.iter()
+                .find(|r| r.get::<String, _>(0) == key)
+                .map(|r| r.get::<String, _>(1))
+                .unwrap_or_default()
+        };
+        Ok((get("tls_cert_path"), get("tls_key_path")))
+    }
+
+    async fn set_tls_config(&self, cert_path: &str, key_path: &str) -> Result<(), StorageError> {
+        let kv = [("tls_cert_path", cert_path), ("tls_key_path", key_path)];
+        for (key, value) in kv {
+            sqlx::query(
+                "INSERT INTO server_meta (key, value) VALUES (?, ?)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            )
+            .bind(key)
+            .bind(value)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
     }
 
     async fn set_owner_claim_hash(&self, hash: &str) -> Result<(), StorageError> {

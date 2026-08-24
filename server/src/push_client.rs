@@ -35,7 +35,11 @@ pub async fn send_push_async(
     let pubkey = signing_key.verifying_key().to_bytes();
     let signature = signing_key.sign(body_str.as_bytes()).to_bytes();
 
-    let client = reqwest::Client::new();
+    // 跳过证书校验：推送服务可能使用自签 TLS 证书（与 push 端探测服务器一致）
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap_or_default();
     let url = format!("{}/push", push_service_url.trim_end_matches('/'));
     let result = client
         .post(&url)

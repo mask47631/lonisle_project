@@ -198,6 +198,18 @@
           <input id="livekit-secret" type="password" />
           <button class="btn" id="livekit-save">保存 LiveKit 配置</button>
         </div>
+
+        <h2>TLS 证书（HTTPS，外部证书）</h2>
+        <p class="desc">配置服务器上 PEM 证书文件路径（如 Let's Encrypt 的 fullchain.pem / privkey.pem）。保存后重启服务生效；清空则回退自动生成的自签证书。</p>
+        <div class="form-col">
+          <label>证书路径</label>
+          <input id="tls-cert-path" placeholder="/data/tls/fullchain.pem" />
+          <label>私钥路径</label>
+          <input id="tls-key-path" placeholder="/data/tls/privkey.pem" />
+          <button class="btn" id="tls-save">保存证书配置</button>
+          <p class="desc" id="tls-current"></p>
+          <p class="desc" style="color:#F0B232">注意：更换证书后证书指纹变化，已连接的客户端（TOFU 钉住旧指纹）需在设置中清除信任后重新连接。</p>
+        </div>
       </section>
 
       <!-- Bot 管理（F-BOT） -->
