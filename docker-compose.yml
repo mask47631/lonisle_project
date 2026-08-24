@@ -1,0 +1,76 @@
+# LonIsle 一键部署编排
+# 服务：聊天服务器（server）+ 推送服务（push）+ 音视频（livekit）
+#
+# 使用：
+#   docker compose up -d
+#
+# 注意：
+#   - 首次启动 server 会生成服务器密钥对（身份），请备份数据卷中的密钥
+#   - LiveKit 配置（URL/API Key/Secret）需在 server 管理界面（http://<host>:8080）中设置，
+#     或在首次启动后通过 /api/livekit/update 接口配置
+
+services:
+  # 聊天服务器
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: lonisle-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - server-data:/data
+    environment:
+      - LISTEN=0.0.0.0:8080
+      - DATA_DIR=/data
+      # Bot Token（可选，用于机器人 API；留空表示未启用）
+      - BOT_TOKEN=${BOT_TOKEN:-}
+    depends_on:
+      push:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # 推送服务
+  push:
+    build:
+      context: .
+      dockerfile: push/Dockerfile
+    container_name: lonisle-push
+    ports:
+      - "8081:8081"
+    volumes:
+      - push-data:/data
+    environment:
+      - LISTEN=0.0.0.0:8081
+      - DATA_DIR=/data
+      - RATE_PER_MINUTE=${RATE_PER_MINUTE:-2}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # LiveKit 音视频（SFU，可选）
+  # 注意：LiveKit 需要宿主网络（use_external_ip: true）以正确获取外部 IP 与 TURN 地址，
+  # 因此使用 host 网络模式，端口由 livekit.yaml 配置（7880/7881/7882/5349/3478）。
+  # 若 LiveKit 已独立部署，可注释掉此服务，仅在 server 管理界面配置其地址。
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: lonisle-livekit
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      # SSL 证书（livekit.yaml 中配置的 cert_file/key_file 路径）
+      - ${SSL_CERT_DIR:-./certs}:/SslOutPut/lonisle:ro
+    network_mode: host
+    restart: unless-stopped
+
+volumes:
+  server-data:
+  push-data:

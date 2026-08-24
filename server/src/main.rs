@@ -1,0 +1,378 @@
+//! LonIsle 聊天服务器二进制入口
+
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use anyhow::Context;
+use clap::Parser;
+use lonisle_core::identity::user_id_from_pubkey;
+use sha2::Digest as _;
+use tracing::{info, warn};
+
+use lonisle_server::storage::{JoinStrategy, SqliteStorage, Storage};
+use lonisle_server::ws::AppState;
+
+/// LonIsle 聊天服务器命令行参数
+#[derive(Parser, Debug)]
+#[command(name = "lonisle-server", version, about = "LonIsle 分布式聊天服务器")]
+struct Args {
+    /// 监听地址
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    listen: String,
+
+    /// 数据目录（密钥、SQLite 数据库）
+    #[arg(long, default_value = "./data")]
+    data_dir: PathBuf,
+
+    /// 服务器显示名称
+    #[arg(long, default_value = "LonIsle Server")]
+    name: String,
+
+    /// 服务器简介
+    #[arg(long, default_value = "")]
+    description: String,
+
+    /// Bot Token（M6，Bot 认证用；空表示未启用 Bot）
+    #[arg(long, default_value = "")]
+    bot_token: String,
+
+    /// 管理 API Token（可用环境变量 LONISLE_ADMIN_TOKEN 覆盖；
+    /// 缺省时从数据目录加载或自动生成并打印一次）
+    #[arg(long, default_value = "", env = "LONISLE_ADMIN_TOKEN")]
+    admin_token: String,
+
+    /// 密钥备份导出路径（加密备份服务器密钥对，F-SID-5）
+    #[arg(long)]
+    backup_key: Option<PathBuf>,
+
+    /// 密钥恢复路径（从备份恢复服务器密钥对）
+    #[arg(long)]
+    restore_key: Option<PathBuf>,
+
+    /// 备份口令（可用环境变量 LONISLE_BACKUP_PASSPHRASE；备份/恢复加密格式时必填）
+    #[arg(long, default_value = "", env = "LONISLE_BACKUP_PASSPHRASE")]
+    backup_passphrase: String,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info,tower_http=warn".into()),
+        )
+        .init();
+
+    let args = Args::parse();
+
+    // rustls CryptoProvider（ring，供 TLS 使用）
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
+    // 准备数据目录
+    std::fs::create_dir_all(&args.data_dir)
+        .with_context(|| format!("创建数据目录失败：{:?}", args.data_dir))?;
+
+    // 密钥恢复：从备份恢复服务器密钥对
+    if let Some(restore_path) = &args.restore_key {
+        restore_keypair(&args.data_dir, restore_path, &args.backup_passphrase)?;
+        info!("已从备份恢复服务器密钥对");
+        return Ok(());
+    }
+
+    // 加载或生成服务器密钥对
+    let keypair = load_or_generate_keypair(&args.data_dir)?;
+
+    // 密钥备份（F-SID-5）：口令加密备份服务器密钥对
+    if let Some(backup_path) = &args.backup_key {
+        backup_keypair(&keypair, backup_path, &args.backup_passphrase)?;
+        info!("服务器密钥对已加密备份到 {:?}", backup_path);
+        return Ok(());
+    }
+    let server_id = user_id_from_pubkey(&keypair.public_bytes());
+    info!(server_id = %server_id, "服务器身份已就绪");
+    info!("server_id={}，请妥善备份数据目录中的密钥，丢失即身份失效", server_id);
+
+    // 初始化存储
+    let db_path = args.data_dir.join("lonisle.db");
+    let storage = SqliteStorage::open(db_path.to_str().unwrap())
+        .await
+        .context("打开数据库失败")?;
+
+    // 持久化服务器元数据（保留已有配置，首次默认审批加入）
+    let existing = storage.get_server_meta().await?;
+    let meta = lonisle_server::storage::ServerMeta {
+        server_id: server_id.clone(),
+        name: if args.name != "LonIsle Server" {
+            args.name.clone()
+        } else {
+            existing.as_ref().map(|m| m.name.clone()).unwrap_or(args.name.clone())
+        },
+        // 简介：命令行非空才覆盖，否则保留 DB 已有值（避免重启丢失）
+        description: if !args.description.is_empty() {
+            args.description.clone()
+        } else {
+            existing
+                .as_ref()
+                .map(|m| m.description.clone())
+                .unwrap_or_default()
+        },
+        strategy: existing
+            .as_ref()
+            .map(|m| m.strategy)
+            .unwrap_or(JoinStrategy::Approval),
+        migration_target_address: existing
+            .as_ref()
+            .map(|m| m.migration_target_address.clone())
+            .unwrap_or_default(),
+        migration_target_fingerprint: existing
+            .as_ref()
+            .map(|m| m.migration_target_fingerprint.clone())
+            .unwrap_or_default(),
+        migration_signature: existing
+            .as_ref()
+            .map(|m| m.migration_signature.clone())
+            .unwrap_or_default(),
+        rate_limit_per_minute: existing
+            .as_ref()
+            .map(|m| m.rate_limit_per_minute)
+            .unwrap_or(0),
+        max_attachment_size: existing
+            .as_ref()
+            .map(|m| m.max_attachment_size)
+            .unwrap_or(0),
+        attachment_quota: existing
+            .as_ref()
+            .map(|m| m.attachment_quota)
+            .unwrap_or(0),
+        mention_read_enabled: existing
+            .as_ref()
+            .map(|m| m.mention_read_enabled)
+            .unwrap_or(false),
+        livekit_url: existing
+            .as_ref()
+            .map(|m| m.livekit_url.clone())
+            .unwrap_or_default(),
+        livekit_api_key: existing
+            .as_ref()
+            .map(|m| m.livekit_api_key.clone())
+            .unwrap_or_default(),
+        livekit_api_secret: existing
+            .as_ref()
+            .map(|m| m.livekit_api_secret.clone())
+            .unwrap_or_default(),
+        icon: existing
+            .as_ref()
+            .map(|m| m.icon.clone())
+            .unwrap_or_default(),
+    };
+    storage.set_server_meta(&meta).await?;
+
+    // 默认话题（M1 单话题）
+    storage
+        .ensure_topic("default", "默认话题", "欢迎来到 LonIsle")
+        .await?;
+
+    // Owner 一次性认领码（F-PERM-1）：无成员且无未使用认领码时生成并打印
+    ensure_owner_claim_code(&storage).await?;
+
+    // 初始化附件目录
+    let attachments_dir = args.data_dir.join("attachments");
+    std::fs::create_dir_all(&attachments_dir).context("创建附件目录失败")?;
+
+    // 管理 API Token：参数/环境变量 > 数据目录持久化 > 自动生成
+    let admin_token = load_or_generate_admin_token(&args.data_dir, &args.admin_token)?;
+
+    // TLS（F-SID-2）：自签证书绑定服务器身份密钥对
+    let tls = lonisle_server::tls::load_or_generate(&args.data_dir)?;
+    println!("==================================================");
+    println!(" LonIsle 服务器证书指纹（邀请链接 # 后缀，F-JOIN-7）：");
+    println!(" {}", tls.fingerprint);
+    println!("==================================================");
+
+    // 构建共享应用状态
+    let mut state = AppState::with_data_dir(
+        storage.clone(),
+        keypair,
+        args.data_dir.to_string_lossy().to_string(),
+    );
+    state.bot_token = args.bot_token.clone();
+    state.admin_token = admin_token;
+    state.tls_fingerprint = tls.fingerprint.clone();
+    let state = Arc::new(state);
+
+    // 构建路由：WebSocket + 管理界面 + 附件
+    let app = lonisle_server::admin::build_router(state.clone())
+        .merge(lonisle_server::attachments::build_attachments_router(state.clone()));
+
+    let addr: SocketAddr = args.listen.parse().context("无效的监听地址")?;
+    info!(%addr, fingerprint = %tls.fingerprint, "聊天服务器已启动（TLS）");
+
+    let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem(
+        tls.cert_pem.into_bytes(),
+        tls.key_pem.into_bytes(),
+    )
+    .await
+    .context("加载 TLS 配置失败")?;
+
+    axum_server::bind_rustls(addr, tls_config)
+        .serve(app.into_make_service())
+        .await?;
+
+    Ok(())
+}
+
+/// 确保 Owner 一次性认领码就绪（F-PERM-1）。
+/// 仅当服务器无任何成员且不存在未使用的认领码时生成；
+/// 认领码明文只打印到控制台一次，库中仅存 SHA256 哈希。
+async fn ensure_owner_claim_code(
+    storage: &SqliteStorage,
+) -> anyhow::Result<()> {
+    let has_members = !storage.list_members().await?.is_empty();
+    let has_code = storage.get_owner_claim_hash().await?.is_some();
+    if has_members || has_code {
+        return Ok(());
+    }
+
+    // 生成可读认领码：16 字节随机 → Crockford Base32 小写，按 4 位分组
+    let mut bytes = [0u8; 16];
+    use rand::RngCore;
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let raw = base32::encode(base32::Alphabet::Crockford, &bytes).to_lowercase();
+    let code = raw
+        .chars()
+        .collect::<Vec<_>>()
+        .chunks(4)
+        .map(|c| c.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    let hash = hex::encode(sha2::Sha256::digest(code.as_bytes()));
+    storage.set_owner_claim_hash(&hash).await?;
+
+    println!("==================================================");
+    println!(" LonIsle Owner 一次性认领码（F-PERM-1）：");
+    println!(" {code}");
+    println!(" 首个持此码完成加入的用户自动成为 Owner，认领码随即失效。");
+    println!(" 此码仅显示一次，请妥善保管；丢失可在删除数据目录后重新部署。");
+    println!("==================================================");
+    Ok(())
+}
+
+/// 加载或生成管理 API Token（32 字节随机 hex），持久化到数据目录（0600）。
+/// 优先级：命令行/环境变量 > 数据目录文件 > 自动生成（打印一次）。
+fn load_or_generate_admin_token(data_dir: &PathBuf, explicit: &str) -> anyhow::Result<String> {
+    if !explicit.is_empty() {
+        info!("管理 API Token 已由参数/环境变量提供");
+        return Ok(explicit.to_string());
+    }
+
+    let token_path = data_dir.join("admin_token");
+    if token_path.exists() {
+        let token = std::fs::read_to_string(&token_path)
+            .context("读取管理 Token 失败")?
+            .trim()
+            .to_string();
+        if !token.is_empty() {
+            info!("已加载现有管理 API Token");
+            return Ok(token);
+        }
+    }
+
+    // 生成 32 字节随机 Token（hex 编码 64 字符）
+    let mut bytes = [0u8; 32];
+    use rand::RngCore;
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let token = hex::encode(bytes);
+    std::fs::write(&token_path, &token).context("写入管理 Token 失败")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600));
+    }
+    info!("已生成新的管理 API Token（已持久化到数据目录）");
+    println!("==================================================");
+    println!(" LonIsle 管理 API Token（Web 管理界面登录凭证）：");
+    println!(" {token}");
+    println!("==================================================");
+    Ok(token)
+}
+
+/// 加载或生成服务器密钥对（Ed25519），持久化到数据目录。
+fn load_or_generate_keypair(
+    data_dir: &PathBuf,
+) -> anyhow::Result<lonisle_core::device::DeviceKeypair> {
+    use lonisle_core::device::DeviceKeypair;
+
+    let key_path = data_dir.join("server_key.bin");
+    if key_path.exists() {
+        let bytes = std::fs::read(&key_path).context("读取服务器密钥失败")?;
+        let kp = DeviceKeypair::from_bytes(&bytes).context("解析服务器密钥失败")?;
+        warn!("已加载现有服务器密钥（{} 字节）", bytes.len());
+        return Ok(kp);
+    }
+
+    let kp = DeviceKeypair::generate();
+    std::fs::write(&key_path, kp.secret_bytes()).context("写入服务器密钥失败")?;
+    // 限制权限（仅属主可读）
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+    }
+    info!("已生成新的服务器密钥对");
+    Ok(kp)
+}
+
+/// 备份服务器密钥对到指定路径（口令加密，F-SID-5）。
+fn backup_keypair(
+    keypair: &lonisle_core::device::DeviceKeypair,
+    backup_path: &PathBuf,
+    passphrase: &str,
+) -> anyhow::Result<()> {
+    if passphrase.is_empty() {
+        anyhow::bail!(
+            "加密备份需要口令：请通过 --backup-passphrase 或环境变量 LONISLE_BACKUP_PASSPHRASE 提供"
+        );
+    }
+    let data = lonisle_server::backup::encrypt_backup(passphrase, &keypair.secret_bytes())?;
+    std::fs::write(backup_path, data).context("写入备份文件失败")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(backup_path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+/// 从备份恢复服务器密钥对到数据目录（自动识别加密/旧版明文格式）。
+fn restore_keypair(
+    data_dir: &PathBuf,
+    backup_path: &PathBuf,
+    passphrase: &str,
+) -> anyhow::Result<()> {
+    let bytes = std::fs::read(backup_path).context("读取备份文件失败")?;
+    let secret = if lonisle_server::backup::is_encrypted_backup(&bytes) {
+        if passphrase.is_empty() {
+            anyhow::bail!(
+                "该备份为加密格式：请通过 --backup-passphrase 或环境变量 LONISLE_BACKUP_PASSPHRASE 提供口令"
+            );
+        }
+        lonisle_server::backup::decrypt_backup(passphrase, &bytes)?
+    } else {
+        // 旧版明文备份（向后兼容）
+        bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("备份文件格式错误（应为 32 字节密钥）"))?
+    };
+
+    let key_path = data_dir.join("server_key.bin");
+    std::fs::write(&key_path, secret).context("写入服务器密钥失败")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}

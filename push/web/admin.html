@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LonIsle 推送服务管理</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-logo"><img src="logo.svg" alt="LonIsle" /></div><span>Push 管理</span></div>
+      <nav class="nav">
+        <button class="nav-item active" data-page="whitelist">白名单</button>
+        <button class="nav-item" data-page="rate">限速配置</button>
+        <button class="nav-item" data-page="mode">运行模式</button>
+        <button class="nav-item" data-page="blacklist">黑名单</button>
+        <button class="nav-item" data-page="directory">目录管理</button>
+        <button class="nav-item" data-page="fcm">FCM 推送</button>
+      </nav>
+      <div class="sidebar-footer"><a href="index.html" class="admin-link">← 返回服务目录</a></div>
+    </aside>
+
+    <main class="main">
+      <section id="page-whitelist" class="page">
+        <h1>白名单审核</h1>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>服务器 ID</th><th>状态</th><th>申请时间</th><th>操作</th></tr></thead>
+            <tbody id="whitelist-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="page-rate" class="page hidden">
+        <h1>限速配置</h1>
+        <div class="form-row">
+          <label>每分钟条数</label>
+          <input id="rate-input" type="number" min="1" />
+          <button class="btn" id="rate-save">保存</button>
+        </div>
+        <p class="desc" id="rate-current"></p>
+      </section>
+
+      <!-- 运行模式（F-RATE-5/8） -->
+      <section id="page-mode" class="page hidden">
+        <h1>运行模式</h1>
+        <div class="form-row">
+          <label>模式</label>
+          <select id="mode-select">
+            <option value="true">白名单模式（默认：未审核服务器一律拒推）</option>
+            <option value="false">黑名单模式（黑名单外一律放行）</option>
+          </select>
+          <button class="btn" id="mode-save">切换模式</button>
+        </div>
+        <p class="desc" id="mode-current"></p>
+        <p class="desc">说明：黑名单在两种模式下均生效（自动熔断依赖此行为，F-RATE-6）。</p>
+      </section>
+
+      <!-- 黑名单（F-RATE-6） -->
+      <section id="page-blacklist" class="page hidden">
+        <h1>黑名单</h1>
+        <div class="form-row">
+          <input id="blacklist-id" placeholder="服务器 ID" />
+          <input id="blacklist-reason" placeholder="原因（可选）" />
+          <button class="btn" id="blacklist-add">加入黑名单</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>服务器 ID</th><th>原因</th><th>操作</th></tr></thead>
+            <tbody id="blacklist-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="page-directory" class="page hidden">
+        <h1>目录管理</h1>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>名称</th><th>服务器 ID</th><th>地址</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="directory-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- FCM 推送配置（F-PUSH-2：web 端配置两种凭证方式） -->
+      <section id="page-fcm" class="page hidden">
+        <h1>FCM 推送配置</h1>
+        <h2>方式一：Firebase 服务账号（推荐，Admin SDK 同款）</h2>
+        <div class="form-row">
+          <label>服务账号 JSON</label>
+          <textarea id="fcm-service-account" rows="7" placeholder='粘贴 Firebase 控制台生成的服务账号 JSON（含 private_key / client_email / project_id）'></textarea>
+        </div>
+        <h2>方式二：OAuth2 Refresh Token</h2>
+        <div class="form-row">
+          <label>Project ID</label>
+          <input id="fcm-project" placeholder="如 lonisle" />
+        </div>
+        <div class="form-row">
+          <label>Client ID</label>
+          <input id="fcm-client-id" placeholder="Google Cloud OAuth2 客户端 ID" />
+        </div>
+        <div class="form-row">
+          <label>Client Secret</label>
+          <input id="fcm-client-secret" type="password" placeholder="OAuth2 客户端 Secret（留空保留原值）" />
+        </div>
+        <div class="form-row">
+          <label>Refresh Token</label>
+          <input id="fcm-refresh-token" type="password" placeholder="OAuth2 Refresh Token（留空保留原值）" />
+        </div>
+        <div class="form-row">
+          <button class="btn" id="fcm-save">保存并启用</button>
+        </div>
+        <p class="desc" id="fcm-current"></p>
+        <p class="desc">说明：两种方式任一齐全即启用真实 FCM 通道（服务账号优先）。Secret / Refresh Token / 服务账号 JSON 保存后不回显。</p>
+      </section>
+    </main>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+[package]
+name = "lonisle_client_core"
+version = "0.1.0"
+edition = "2021"
+
+# 独立于根 workspace（flutter_rust_bridge 需要独立构建）
+[workspace]
+
+[lib]
+name = "lonisle_client_core"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+lonisle-core = { path = "../../core" }
+flutter_rust_bridge = "=2.13.0-beta.6"
+prost = "0.13"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+hkdf = "0.12"
+sha2 = "0.10"
+ed25519-dalek = "2"

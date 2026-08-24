@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LonIsle 服务器</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo"><img src="logo.svg" alt="LonIsle" /></div>
+        <span>LonIsle 服务器</span>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-page="home">首页</button>
+      </nav>
+      <div class="sidebar-footer"><a href="admin.html" class="admin-link">管理入口 →</a></div>
+    </aside>
+
+    <main class="main">
+      <section id="page-home" class="page">
+        <!-- 服务器公开信息（F-DISC：图标/名称/简介/人数/加入策略） -->
+        <div class="server-card">
+          <img id="server-icon" class="server-icon" src="logo.svg" alt="服务器图标" />
+          <h1 id="server-name" style="margin:16px 0 6px;">—</h1>
+          <p id="server-desc" class="desc" style="margin:0 0 20px;">—</p>
+          <div class="cards">
+            <div class="card"><div class="card-label">在线人数</div><div class="card-value" id="server-online">—</div></div>
+            <div class="card"><div class="card-label">成员总数</div><div class="card-value" id="server-total">—</div></div>
+            <div class="card"><div class="card-label">加入策略</div><div class="card-value" id="server-join">—</div></div>
+            <div class="card"><div class="card-label">协议版本</div><div class="card-value" id="server-ver">—</div></div>
+          </div>
+          <p class="desc" id="server-status" style="margin-top:16px;"></p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

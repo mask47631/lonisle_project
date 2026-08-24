@@ -1,0 +1,58 @@
+# Rust
+/target
+**/*.rs.bk
+# Cargo.lock 提交（服务端为二进制，需可复现构建）
+
+# 服务器运行时数据
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+server_key.json
+server_key.bin
+
+# 环境
+.env
+.env.local
+
+# Flutter / Dart
+/client/.dart_tool/
+/client/build/
+/client/.flutter-plugins
+/client/.flutter-plugins-dependencies
+/client/.packages
+/client/rust/target/
+/client/rust/**/*.so
+/client/rust/**/*.dylib
+/client/rust/**/*.dll
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase / FCM 凭据（含 API Key 与服务账号私钥，严禁提交）
+**/google-services.json
+**/*adminsdk*.json
+**/firebase-adminsdk-*.json
+/FCM/
+
+# 服务器运行时生成的管理 Token（server-key 之外的敏感文件）
+**/admin_token
+**/*.token
+
+# 运行时聊天附件（含用户上传内容，勿提交）
+/server/attachments/
+# Android 构建产物
+/client/android/build/
+/client/android/.gradle/
+/client/android/app/build/
+
+# 本地开发工具数据（计划/日志，勿提交）
+/.codebuddy/
+/.workbuddy/

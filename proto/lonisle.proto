@@ -1,0 +1,597 @@
+// LonIsle 协议定义（唯一 schema 源）
+// 版本：v1（M1 最小闭环）
+// 说明：客户端与聊天服务器共用，经 prost 生成 Rust 代码。
+// 协议版本号由 core/src/version.rs 定义（proto3 不支持顶层 const）。
+syntax = "proto3";
+
+package lonisle;
+
+// ============================================================
+// 身份与设备
+// ============================================================
+
+// 设备证书（M1 首设备自签；长期有效，不设 expires_at）
+message DeviceCert {
+  string user_id = 1;        // 主公钥哈希（完整 ID）
+  bytes device_pubkey = 2;   // 设备公钥（Ed25519）
+  string device_name = 3;    // 设备名称
+  int64 issued_at = 4;       // 签发时间（unix 秒）
+  bytes signature = 5;       // 主私钥对上述字段的签名
+  bytes x25519_pubkey = 6;   // X25519 身份公钥（E2EE，M6）
+}
+
+// 用户身份（加入时随 Hello 携带）
+message Identity {
+  string user_id = 1;        // 主公钥哈希
+  bytes master_pubkey = 2;   // 主公钥
+  string display_name = 3;   // 展示名，如 "Alice#3f9a2b"
+  string avatar_seed = 4;    // Identicon 头像种子（由 ID 派生）
+}
+
+// ============================================================
+// 握手与加入
+// ============================================================
+
+// 客户端 → 服务器：Hello 握手
+message Hello {
+  int32 protocol_version = 1;      // 客户端协议版本
+  Identity identity = 2;           // 用户身份
+  DeviceCert device_cert = 3;      // 设备证书
+  bytes device_signature = 4;      // 设备私钥对 (protocol_version + identity + device_cert) 的签名
+  string bot_token = 5;            // Bot 认证 Token（非空走 Bot 认证，M6）
+}
+
+// 服务器 → 客户端：Hello 响应
+message HelloResponse {
+  int32 protocol_version = 1;      // 服务器协议版本
+  bool compatible = 2;             // 是否兼容
+  int32 min_supported = 3;         // 若 incompatible，服务器支持的最低版本
+  int32 max_supported = 4;         // 若 incompatible，服务器支持的最高版本
+  string server_id = 5;            // 服务器 ID（公钥哈希）
+  bytes server_pubkey = 6;         // 服务器公钥
+  string server_name = 7;          // 服务器名称
+  string server_desc = 8;          // 服务器简介
+  bool is_member = 9;              // 该身份是否已是成员
+  string migration_target = 10;    // 迁移目标地址（空则无迁移，P1）
+  string migration_fingerprint = 11; // 迁移目标指纹（P1）
+  bool av_enabled = 12;            // 服务器是否启用音视频（LiveKit 已配置）
+  string migration_signature = 13; // 迁移公告签名（服务器私钥对 target+fingerprint 签名，F-JOIN-8）
+}
+
+// 客户端 → 服务器：开放加入申请（M1 无审批，即加入）
+message JoinRequest {
+  string reason = 1;               // 申请理由（M1 可为空）
+  string push_service_url = 2;     // 推送服务地址（M1 预留，可为空）
+  Identity identity = 3;           // 身份（含默认资料）
+  string claim_code = 4;           // Owner 一次性认领码（可选，F-PERM-1）
+  string invite_token = 5;         // 仅邀请模式下的一次性邀请令牌（可选，F-JOIN-5）
+}
+
+// 服务器 → 客户端：加入结果
+message JoinResponse {
+  bool accepted = 1;
+  string reason = 2;               // 若拒绝的原因
+  bool is_owner = 3;               // 是否成为 Owner（首个加入者）
+  ServerInfo server_info = 4;      // 服务器资料
+  repeated TopicInfo topics = 5;   // 话题列表
+  JoinStatus status = 6;           // 审批结果：OPEN 时直接 APPROVED；APPROVAL 时 PENDING
+  string request_id = 7;           // 审批模式下生成的申请 ID（供查询状态）
+  JoinStrategy strategy = 8;       // 服务器当前加入策略
+}
+
+// ============================================================
+// 服务器与话题
+// ============================================================
+
+message ServerInfo {
+  string server_id = 1;
+  string name = 2;
+  string description = 3;
+  string fingerprint = 4;          // 服务器证书指纹（TOFU 比对）
+  JoinStrategy strategy = 5;       // 加入策略
+  string icon = 6;                 // 服务器图标版本标识（"ext:ts"，空则未设置；内容走 GET /icon）
+  uint32 rate_limit_per_minute = 7; // 发言频率限制（0 = 不限，F-PERM-5）
+  uint64 max_attachment_size = 8;   // 附件大小上限（字节，0 = 不限）
+  uint64 attachment_quota = 9;      // 已弃用：单成员附件总配额（已取消限制，字段保留兼容）
+}
+
+// 管理员 → 服务器：更新服务器设置
+message UpdateServerSettingsRequest {
+  string name = 1;
+  string description = 2;
+  JoinStrategy strategy = 3;
+}
+
+// 话题类型
+enum TopicType {
+  TOPIC_TYPE_UNSPECIFIED = 0;
+  TEXT = 1;           // 普通话题：默认全员可发言
+  ANNOUNCEMENT = 2;   // 订阅/公告：仅管理员发言，成员只读
+  AV = 3;             // 音视频话题：LiveKit 房间，成员可加入/离开
+}
+
+// 话题权限
+enum TopicPermission {
+  TOPIC_PERMISSION_UNSPECIFIED = 0;
+  PUBLIC = 1;         // 公开：成员可见可发言（受类型约束）
+  READONLY = 2;       // 只读：仅管理员可发言
+}
+
+message TopicInfo {
+  string topic_id = 1;
+  string name = 2;
+  string description = 3;
+  int32 sort_order = 4;
+  TopicType type = 5;              // 话题类型（订阅/普通/音视频）
+  TopicPermission permission = 6;  // 权限（公开/只读）
+}
+
+// 客户端 → 服务器：申请加入音视频话题（AV，LiveKit）
+message JoinAVRequest {
+  string topic_id = 1;
+}
+
+// 服务器 → 客户端：音视频加入响应（含 LiveKit 地址与短时 Token）
+message JoinAVResponse {
+  string url = 1;                  // LiveKit 服务地址
+  string token = 2;                // 短时加入 Token
+}
+
+// 管理员 → 服务器：创建话题
+message CreateTopicRequest {
+  string name = 1;
+  string description = 2;
+  TopicType type = 3;
+  TopicPermission permission = 4;
+}
+
+// 管理员 → 服务器：编辑话题
+message UpdateTopicRequest {
+  string topic_id = 1;
+  string name = 2;
+  string description = 3;
+  TopicType type = 4;
+  TopicPermission permission = 5;
+}
+
+// 管理员 → 服务器：删除话题
+message DeleteTopicRequest {
+  string topic_id = 1;
+}
+
+// 管理员 → 服务器：话题排序
+message ReorderTopicsRequest {
+  repeated string topic_ids = 1;   // 按新顺序排列的话题 ID 列表
+}
+
+// 服务器 → 客户端：话题列表响应（复用 ListTopicsRequest 触发）
+message TopicListResponse {
+  repeated TopicInfo topics = 1;
+}
+
+// ============================================================
+// 消息与同步
+// ============================================================
+
+// 消息内容（文本 + 可选附件 + 可选加密）
+message MessageContent {
+  string text = 1;
+  Attachment attachment = 2;       // 可选，媒体消息时携带（M5）
+  bytes encrypted = 3;             // E2EE 密文 + 棘轮头（M6）
+}
+
+// 附件元数据（随消息体同步，未下载原文件也可渲染占位）
+message Attachment {
+  string attachment_id = 1;        // 服务器分配的附件 ID
+  string kind = 2;                 // image / video / audio / file
+  uint64 size = 3;                 // 原文件字节数
+  string mime = 4;                 // MIME 类型
+  uint32 width = 5;                // 图片/视频宽（无则 0）
+  uint32 height = 6;               // 图片/视频高（无则 0）
+  uint32 duration = 7;             // 音视频时长（秒，无则 0）
+  string thumbnail_id = 8;         // 缩略图附件 ID（可空）
+  string filename = 9;             // 原始文件名（含后缀，下载/保存时用，F-MEDIA-10）
+}
+
+// 表情回应（Reaction）
+message Reaction {
+  string emoji = 1;
+  repeated string user_id = 2;     // 对该 emoji 回应的用户列表
+}
+
+// 客户端 → 服务器：发送消息
+message SendMessage {
+  string topic_id = 1;
+  string msg_id = 2;               // 客户端生成的随机哈希
+  bytes author_id = 3;             // 作者 user_id（字节）
+  string device_id = 4;            // 设备 ID（设备公钥哈希）
+  int64 client_ts = 5;             // 客户端时间戳（仅展示参考，不参与排序）
+  MessageContent content = 6;
+  bytes signature = 7;             // 设备私钥对上述字段的签名
+  string reply_to = 8;             // 被回复消息的 msg_id（F-MSG-6，可空）
+}
+
+// 服务器 → 客户端：消息回执（含服务器分配的序号）
+message SendMessageAck {
+  string msg_id = 1;
+  uint64 seq = 2;                  // 服务器分配的全局单调序号
+  bool duplicated = 3;             // 是否幂等去重命中
+}
+
+// 服务器 → 客户端：广播消息（含完整序号与服务器时间）
+message BroadcastMessage {
+  uint64 seq = 1;
+  string topic_id = 2;
+  string msg_id = 3;
+  bytes author_id = 4;
+  string device_id = 5;
+  string author_name = 6;          // 服务器内展示昵称
+  int64 server_ts = 7;             // 服务器接收时间
+  MessageContent content = 8;
+  bool edited = 9;                 // 是否被编辑过
+  bool deleted = 10;               // 是否已删除（占位）
+  string mentions = 11;            // @提及（JSON 数组，M2 基础版）
+  repeated Reaction reactions = 12; // 表情回应（M5）
+  string reply_to = 13;            // 被回复消息的 msg_id（F-MSG-6，可空）
+}
+
+// 客户端 → 服务器：编辑消息
+message EditMessageRequest {
+  string topic_id = 1;
+  string msg_id = 2;               // 原消息 ID
+  string new_text = 3;
+  bytes signature = 4;             // 设备签名
+}
+
+// 客户端 → 服务器：删除消息
+message DeleteMessageRequest {
+  string topic_id = 1;
+  string msg_id = 2;
+  bytes signature = 3;
+}
+
+// 客户端 → 服务器：添加表情回应（Reaction）
+message AddReactionRequest {
+  string topic_id = 1;
+  string msg_id = 2;
+  string emoji = 3;
+}
+
+// 客户端 → 服务器：移除表情回应
+message RemoveReactionRequest {
+  string topic_id = 1;
+  string msg_id = 2;
+  string emoji = 3;
+}
+
+// 客户端 → 服务器：标记 @提及已读（P2 已读回执）
+message MarkMentionReadRequest {
+  string topic_id = 1;
+  string msg_id = 2;
+}
+
+// 客户端 → 服务器：查询某消息的已读列表（P2）
+message MentionReadListRequest {
+  string msg_id = 1;
+}
+
+// 服务器 → 客户端：已读列表响应
+message MentionReadListResponse {
+  repeated string user_id = 1;   // 已读用户列表
+  int64 read_at = 2;             // 各用户已读时间（简化：仅返回用户列表）
+}
+
+// 客户端 → 服务器：增量同步请求（按游标）
+message SyncRequest {
+  string topic_id = 1;
+  uint64 after_seq = 2;            // 已同步到的最大序号（0 表示从头）
+  uint32 limit = 3;
+}
+
+// 服务器 → 客户端：增量同步响应
+message SyncResponse {
+  string topic_id = 1;
+  uint64 latest_seq = 2;           // 服务器当前最大序号
+  repeated BroadcastMessage messages = 3;
+}
+
+// ============================================================
+// 成员
+// ============================================================
+
+// 成员角色
+enum MemberRole {
+  MEMBER_ROLE_UNSPECIFIED = 0;
+  OWNER = 1;
+  ADMIN = 2;
+  MEMBER = 3;
+}
+
+message MemberInfo {
+  string user_id = 1;
+  string display_name = 2;       // 服务器内展示昵称（覆盖 > 全局默认）
+  string avatar_seed = 3;        // 服务器内展示头像种子
+  bool is_owner = 4;             // 兼容 M1（role == OWNER 时 true）
+  int64 joined_at = 5;
+  MemberRole role = 6;           // 角色
+  bool muted = 7;                // 禁言
+  bool banned = 8;               // 封禁
+  bool is_online = 9;            // 在线状态
+  string server_nickname = 10;   // 服务器内覆盖昵称（空则用全局）
+  string server_avatar = 11;     // 服务器内覆盖头像种子（空则用全局）
+  bool is_bot = 12;              // 是否机器人（M6）
+}
+
+message MemberListRequest {}
+
+message MemberListResponse {
+  repeated MemberInfo members = 1;
+}
+
+// 管理员 → 服务器：设置成员角色
+message SetMemberRoleRequest {
+  string user_id = 1;
+  MemberRole role = 2;
+}
+
+// 管理员 → 服务器：禁言/解禁成员
+message SetMuteRequest {
+  string user_id = 1;
+  bool muted = 2;
+}
+
+// 管理员 → 服务器：踢出成员（可重新申请加入）
+message KickMemberRequest {
+  string user_id = 1;
+}
+
+// 管理员 → 服务器：封禁/解封成员（按 user_id）
+message SetBanRequest {
+  string user_id = 1;
+  bool banned = 2;
+}
+
+// 成员 → 服务器：更新本服务器内资料覆盖
+message UpdateServerProfileRequest {
+  // optional 用于区分「未设置」（不动该字段）与「空字符串」（清除覆盖），
+  // 防止改昵称清空头像、改头像清空昵称
+  optional string server_nickname = 1;    // 覆盖昵称（空串则清除）
+  optional string server_avatar = 2;      // 覆盖头像引用（空串则清除）
+}
+
+// 成员 → 服务器：退出服务器
+message LeaveServerRequest {}
+
+// 加入状态
+enum JoinStatus {
+  JOIN_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;      // 待审批
+  APPROVED = 2;     // 已同意
+  REJECTED = 3;     // 已拒绝
+  IGNORED = 4;      // 已忽略
+}
+
+// 加入策略
+enum JoinStrategy {
+  JOIN_STRATEGY_UNSPECIFIED = 0;
+  APPROVAL = 1;     // 审批加入（默认）
+  OPEN = 2;         // 开放加入
+  INVITE_ONLY = 3;  // 仅邀请
+}
+
+// 审批条目（管理面板用）
+message JoinRequestInfo {
+  string request_id = 1;
+  string user_id = 2;
+  string display_name = 3;
+  string reason = 4;
+  string push_service_url = 5;
+  JoinStatus status = 6;
+  int64 created_at = 7;
+}
+
+// 管理员 → 服务器：处理加入申请
+message ProcessJoinRequest {
+  string request_id = 1;
+  bool approve = 2;              // true=同意，false=拒绝
+}
+
+// 管理员 → 服务器：忽略加入申请
+message IgnoreJoinRequest {
+  string request_id = 1;
+}
+
+// 服务器 → 管理员：待审批申请列表
+message JoinRequestListResponse {
+  repeated JoinRequestInfo requests = 1;
+}
+
+// ============================================================
+// 多设备（M3）：设备授权 / 撤销 / 吊销 / 设备列表
+// ============================================================
+
+// 吊销证明：主私钥对「被吊销设备公钥」的签名
+message RevocationProof {
+  string user_id = 1;              // 主公钥哈希
+  bytes device_pubkey = 2;         // 被吊销设备公钥
+  int64 revoked_at = 3;            // 吊销时间（unix 秒）
+  bytes signature = 4;             // 主私钥对上述字段的签名
+}
+
+// 设备信息
+message DeviceInfo {
+  string device_id = 1;            // 设备 ID = 设备公钥哈希
+  string device_name = 2;          // 设备名称
+  string platform = 3;             // 平台（ios/android/macos/windows/linux）
+  int64 last_active = 4;           // 最近活跃时间
+  bool is_current = 5;             // 是否当前设备
+  bytes device_pubkey = 6;         // 设备公钥（吊销证明签发所需，F-DEV-5）
+}
+
+// 客户端 → 服务器：携带吊销证明（连接时/发消息时）
+message RegisterDeviceRequest {
+  DeviceInfo device = 1;           // 设备信息
+  bytes device_cert = 2;           // 设备证书（proto 编码）
+  repeated RevocationProof revocations = 3;  // 客户端携带的最新吊销证明
+}
+
+// 服务器 → 客户端：设备列表
+message DeviceListResponse {
+  repeated DeviceInfo devices = 1;
+}
+
+// 客户端 → 服务器：撤销设备（携带吊销证明）
+message RevokeDeviceRequest {
+  bytes device_pubkey = 1;         // 被吊销设备公钥
+  RevocationProof proof = 2;       // 吊销证明
+}
+
+// 成员设备变更事件（服务器 → 其他成员广播，精简、不含私密字段）
+message MemberDeviceChangeEvent {
+  string user_id = 1;              // 发生设备变更的成员
+  string device_id = 2;            // 相关设备
+  bool added = 3;                  // true=新增设备，false=撤销设备
+  int64 changed_at = 4;
+  bytes revocation_proof = 5;      // 吊销证明原文（撤销时携带，供跨成员被动学习，F-DEV-8）
+}
+
+// 自定义角色（RBAC，P2）
+message RoleInfo {
+  string role_id = 1;
+  string name = 2;
+  uint32 permissions = 3;          // 权限位掩码
+}
+
+// 客户端 → 服务器：创建/更新角色
+message UpsertRoleRequest {
+  string role_id = 1;
+  string name = 2;
+  uint32 permissions = 3;
+}
+
+// 客户端 → 服务器：删除角色
+message DeleteRoleRequest {
+  string role_id = 1;
+}
+
+// 服务器 → 客户端：角色列表
+message RoleListResponse {
+  repeated RoleInfo roles = 1;
+}
+
+// 客户端 → 服务器：给成员分配角色
+message AssignRoleRequest {
+  string user_id = 1;
+  string role_id = 2;
+}
+
+// 客户端 → 服务器：移除成员角色
+message UnassignRoleRequest {
+  string user_id = 1;
+  string role_id = 2;
+}
+
+// 预密钥束（E2EE，M6）：客户端上传的 X3DH 预密钥
+message PreKeyBundle {
+  string user_id = 1;
+  bytes identity_key = 2;          // X25519 身份公钥
+  bytes signed_pre_key = 3;        // 签名预密钥公钥（SPK）
+  bytes signed_pre_key_sig = 4;    // SPK 的 Ed25519 签名
+  repeated bytes one_time_pre_keys = 5; // 一次性预密钥公钥（OPK）
+}
+
+// 客户端 → 服务器：上传预密钥束
+message UploadPreKeysRequest {
+  PreKeyBundle bundle = 1;
+}
+
+// 客户端 → 服务器：拉取某用户的预密钥束
+message FetchPreKeysRequest {
+  string user_id = 1;
+}
+
+// 服务器 → 客户端：预密钥束响应
+message PreKeyBundleResponse {
+  PreKeyBundle bundle = 1;
+}
+
+// ============================================================
+// 客户端 → 服务器：统一信封（M1 简化，按 type 分发）
+// ============================================================
+
+message ClientEnvelope {
+  enum MsgType {
+    HELLO = 0;
+    JOIN = 1;
+    SEND_MESSAGE = 2;
+    SYNC = 3;
+    LIST_MEMBERS = 4;
+    PING = 5;
+    LIST_TOPICS = 6;
+    CREATE_TOPIC = 7;
+    UPDATE_TOPIC = 8;
+    DELETE_TOPIC = 9;
+    REORDER_TOPICS = 10;
+    LIST_JOIN_REQUESTS = 11;
+    PROCESS_JOIN_REQUEST = 12;
+    IGNORE_JOIN_REQUEST = 13;
+    SET_MEMBER_ROLE = 14;
+    SET_MUTE = 15;
+    KICK_MEMBER = 16;
+    SET_BAN = 17;
+    UPDATE_SERVER_PROFILE = 18;
+    UPDATE_SERVER_SETTINGS = 19;
+    LEAVE_SERVER = 20;
+    EDIT_MESSAGE = 21;
+    DELETE_MESSAGE = 22;
+    REGISTER_DEVICE = 23;
+    LIST_DEVICES = 24;
+    REVOKE_DEVICE = 25;
+    ADD_REACTION = 26;
+    REMOVE_REACTION = 27;
+    UPLOAD_PRE_KEYS = 28;
+    FETCH_PRE_KEYS = 29;
+    UPSERT_ROLE = 30;
+    DELETE_ROLE = 31;
+    LIST_ROLES = 32;
+    ASSIGN_ROLE = 33;
+    UNASSIGN_ROLE = 34;
+    MARK_MENTION_READ = 35;
+    MENTION_READ_LIST = 36;
+    JOIN_AV = 37;
+  }
+  MsgType type = 1;
+  uint64 request_id = 2;           // 请求 ID，用于关联回执
+  bytes payload = 3;               // 对应消息的序列化字节
+}
+
+// 服务器 → 客户端：统一信封
+message ServerEnvelope {
+  enum MsgType {
+    HELLO_RESPONSE = 0;
+    JOIN_RESPONSE = 1;
+    SEND_MESSAGE_ACK = 2;
+    BROADCAST = 3;
+    SYNC_RESPONSE = 4;
+    MEMBER_LIST_RESPONSE = 5;
+    PONG = 6;
+    ERROR = 7;
+    TOPIC_LIST_RESPONSE = 8;
+    JOIN_REQUEST_LIST_RESPONSE = 9;
+    JOIN_REQUEST_UPDATED = 10;      // 审批结果实时推送
+    MEMBER_UPDATED = 11;           // 成员变更（角色/禁言/封禁/踢出）推送
+    TOPIC_UPDATED = 12;            // 话题变更推送
+    OK = 13;                       // 通用成功回执（空 payload）
+    DEVICE_LIST_RESPONSE = 14;     // 设备列表响应
+    MEMBER_DEVICE_CHANGE = 15;     // 成员设备变更事件推送
+    PRE_KEY_BUNDLE_RESPONSE = 16;  // 预密钥束响应（M6 E2EE）
+    ROLE_LIST_RESPONSE = 17;       // 角色列表响应（P2 RBAC）
+    MENTION_READ_LIST_RESPONSE = 18; // 已读列表响应（P2）
+    JOIN_AV_RESPONSE = 19;           // 音视频加入响应（LiveKit）
+    SERVER_INFO_UPDATED = 20;        // 服务器资料变更推送（名称/简介/图标，payload 为 ServerInfo）
+  }
+  MsgType type = 1;
+  uint64 request_id = 2;
+  bytes payload = 3;
+  string error = 4;                // 当 type == ERROR 时的错误描述
+}

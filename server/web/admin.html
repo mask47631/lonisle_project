@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LonIsle 服务器管理</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo"><img src="logo.svg" alt="LonIsle" /></div>
+        <span>LonIsle</span>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-page="overview">概览</button>
+        <button class="nav-item" data-page="requests">审批 <span class="badge-dot" id="req-badge" hidden></span></button>
+        <button class="nav-item" data-page="members">成员</button>
+        <button class="nav-item" data-page="topics">话题</button>
+        <button class="nav-item" data-page="settings">设置</button>
+        <button class="nav-item" data-page="advanced">高级</button>
+        <button class="nav-item" data-page="bots">Bot</button>
+        <button class="nav-item" data-page="data">数据</button>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="index.html" class="admin-link">← 返回首页</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- 概览 -->
+      <section id="page-overview" class="page">
+        <h1>服务器概览</h1>
+        <div class="cards">
+          <div class="card"><div class="card-label">服务器名称</div><div class="card-value" id="server-name">—</div></div>
+          <div class="card"><div class="card-label">服务器 ID</div><div class="card-value mono" id="server-id">—</div></div>
+          <div class="card"><div class="card-label">成员数</div><div class="card-value" id="member-count">—</div></div>
+          <div class="card"><div class="card-label">加入策略</div><div class="card-value" id="server-strategy">—</div></div>
+        </div>
+        <p class="desc" id="server-desc"></p>
+      </section>
+
+      <!-- 审批 -->
+      <section id="page-requests" class="page hidden">
+        <h1>加入审批</h1>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>昵称</th><th>用户 ID</th><th>申请理由</th><th>时间</th><th>操作</th></tr></thead>
+            <tbody id="requests-body"></tbody>
+          </table>
+        </div>
+        <p class="desc" id="requests-empty">暂无待审批申请</p>
+      </section>
+
+      <!-- 成员 -->
+      <section id="page-members" class="page hidden">
+        <h1>成员列表</h1>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>昵称</th><th>用户 ID</th><th>角色</th><th>状态</th><th>加入时间</th><th>操作</th></tr></thead>
+            <tbody id="members-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 话题 -->
+      <section id="page-topics" class="page hidden">
+        <h1>话题管理</h1>
+        <div class="form-row">
+          <input id="topic-name" placeholder="话题名称" />
+          <input id="topic-desc" placeholder="话题描述" />
+          <select id="topic-type">
+            <option value="text">普通</option>
+            <option value="announcement">订阅（公告）</option>
+          </select>
+          <select id="topic-perm">
+            <option value="public">公开</option>
+            <option value="readonly">只读</option>
+          </select>
+          <label class="checkbox"><input type="checkbox" id="topic-push-create" /> 推送</label>
+          <button class="btn" id="topic-create">创建话题</button>
+        </div>
+        <p class="desc">「推送」开启后：该话题每次发送消息，会向服务器下所有客户端推送通知（F-PUSH-8）。</p>
+        <p class="desc" id="topic-av-hint">音视频话题需先在「高级 → LiveKit」配置服务地址与密钥后才会出现该选项（F-TOPIC-6）</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>名称</th><th>描述</th><th>类型</th><th>权限</th><th>推送</th><th>操作</th></tr></thead>
+            <tbody id="topics-body"></tbody>
+          </table>
+        </div>
+        <p class="desc">提示：↑/↓ 调整话题顺序（客户端实时同步）。</p>
+      </section>
+
+      <!-- 话题编辑弹窗 -->
+      <div id="topic-modal" class="modal hidden">
+        <div class="modal-box">
+          <h3>编辑话题</h3>
+          <input id="edit-topic-id" type="hidden" />
+          <div class="form-col">
+            <label>名称</label>
+            <input id="edit-topic-name" />
+          </div>
+          <div class="form-col">
+            <label>描述</label>
+            <input id="edit-topic-desc" />
+          </div>
+          <div class="form-col">
+            <label>类型</label>
+            <select id="edit-topic-type">
+              <option value="text">普通</option>
+              <option value="announcement">订阅（公告）</option>
+              <option value="av">音视频（LiveKit）</option>
+            </select>
+          </div>
+          <div class="form-col">
+            <label>权限</label>
+            <select id="edit-topic-perm">
+              <option value="public">公开</option>
+              <option value="readonly">只读</option>
+            </select>
+          </div>
+          <div class="form-col">
+            <label class="checkbox"><input type="checkbox" id="edit-topic-push" /> 推送（新消息推送给服务器下所有客户端）</label>
+          </div>
+          <div class="modal-actions">
+            <button class="btn reject" id="topic-modal-cancel">取消</button>
+            <button class="btn" id="topic-modal-save">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 设置 -->
+      <section id="page-settings" class="page hidden">
+        <h1>服务器设置</h1>
+        <div class="form-col">
+          <label>服务器图标</label>
+          <div class="icon-row">
+            <img id="setting-icon-preview" class="server-icon-preview" alt="服务器图标" hidden />
+            <span id="setting-icon-empty" class="desc">未设置（客户端显示名称首字母）</span>
+          </div>
+          <input id="setting-icon-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+          <button class="btn" id="setting-icon-upload">上传图标</button>
+          <label>服务器名称</label>
+          <input id="setting-name" />
+          <label>服务器简介</label>
+          <input id="setting-desc" />
+          <label>加入策略</label>
+          <select id="setting-strategy">
+            <option value="approval">审批加入</option>
+            <option value="open">开放加入</option>
+            <option value="invite_only">仅邀请</option>
+          </select>
+          <button class="btn" id="setting-save">保存设置</button>
+        </div>
+      </section>
+
+      <!-- 高级设置：迁移/限速配额/已读开关/LiveKit -->
+      <section id="page-advanced" class="page hidden">
+        <h1>高级设置</h1>
+
+        <h2>服务器迁移（F-JOIN-8）</h2>
+        <div class="form-col">
+          <label>迁移目标地址（host:port，留空取消迁移）</label>
+          <input id="migrate-address" placeholder="new.example.com:8080" />
+          <label>迁移目标证书指纹</label>
+          <input id="migrate-fingerprint" placeholder="sha256 hex" />
+          <button class="btn" id="migrate-save">发布公告（含服务器签名）</button>
+        </div>
+
+        <h2>限速与附件限制（F-MEDIA-9 / F-PUSH）</h2>
+        <div class="form-col">
+          <label>推送限速（条/分钟）</label>
+          <input id="limit-rate" type="number" min="0" />
+          <label>单附件大小上限（MB，0 = 不限）</label>
+          <input id="limit-att-size" type="number" min="0" step="0.1" />
+          <button class="btn" id="limits-save">保存限制配置</button>
+        </div>
+
+        <h2>@提及已读回执（F-MSG-10）</h2>
+        <div class="form-col">
+          <label>服务器侧开关（客户端上报是否入库）</label>
+          <select id="mention-read">
+            <option value="false">关闭（默认）</option>
+            <option value="true">开启</option>
+          </select>
+          <button class="btn" id="mention-read-save">保存</button>
+        </div>
+
+        <h2>音视频（LiveKit）</h2>
+        <div class="form-col">
+          <label>LiveKit URL</label>
+          <input id="livekit-url" placeholder="wss://livekit.example.com" />
+          <label>API Key</label>
+          <input id="livekit-key" />
+          <label>API Secret</label>
+          <input id="livekit-secret" type="password" />
+          <button class="btn" id="livekit-save">保存 LiveKit 配置</button>
+        </div>
+      </section>
+
+      <!-- Bot 管理（F-BOT） -->
+      <section id="page-bots" class="page hidden">
+        <h1>Bot 管理</h1>
+        <div class="form-row">
+          <input id="bot-name" placeholder="Bot 名称" />
+          <button class="btn" id="bot-create">注册 Bot</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Bot ID</th><th>名称</th><th>订阅事件</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="bots-body"></tbody>
+          </table>
+        </div>
+        <p class="desc">Token 仅注册时显示一次（SHA-256 哈希落库）。事件过滤：message/member/join/system，留空订阅全部。</p>
+      </section>
+
+      <!-- 数据管理 -->
+      <section id="page-data" class="page hidden">
+        <h1>数据管理</h1>
+
+        <h2>数据导出（F-PERM-2a）</h2>
+        <div class="form-col">
+          <button class="btn" id="export-json">导出 JSON</button>
+          <button class="btn" id="export-zip">导出完整包（JSON+附件 zip）</button>
+        </div>
+
+        <h2>数据清除（高危，需二次确认）</h2>
+        <div class="form-col">
+          <label>按话题清除</label>
+          <input id="clear-topic-id" placeholder="topic_id" />
+          <button class="btn danger" id="clear-topic-btn">清除该话题消息</button>
+          <button class="btn danger" id="clear-all-btn">清空全部消息</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

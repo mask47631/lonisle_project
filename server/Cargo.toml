@@ -1,0 +1,57 @@
+[package]
+name = "lonisle-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "lonisle_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lonisle-server"
+path = "src/main.rs"
+
+[dependencies]
+lonisle-core = { path = "../core" }
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+prost.workspace = true
+bytes.workspace = true
+ed25519-dalek.workspace = true
+rand.workspace = true
+sha2.workspace = true
+hex.workspace = true
+base32.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+sqlx.workspace = true
+futures-util.workspace = true
+tokio-tungstenite.workspace = true
+rust-embed.workspace = true
+clap.workspace = true
+reqwest.workspace = true
+jsonwebtoken.workspace = true
+rcgen.workspace = true
+axum-server.workspace = true
+base64.workspace = true
+rustls.workspace = true
+hkdf.workspace = true
+aes-gcm.workspace = true
+zip = "2"
+percent-encoding = "2"
+
+[dev-dependencies]
+tokio.workspace = true
+axum.workspace = true
+futures-util.workspace = true
+tokio-tungstenite.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true

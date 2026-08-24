@@ -1,0 +1,26 @@
+group 'xyz.justsoft.video_thumbnail'
+version '1.0-SNAPSHOT'
+
+// 本地修复版：移除已关闭的 jcenter()（Gradle 9.3 不再提供该方法），
+// 仓库跟随根项目（google + mavenCentral）。
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 34
+    namespace 'xyz.justsoft.video_thumbnail'
+
+    defaultConfig {
+        minSdkVersion 21
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    lintOptions {
+        disable 'InvalidPackage'
+    }
+}

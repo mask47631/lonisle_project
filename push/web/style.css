@@ -1,0 +1,119 @@
+:root {
+  --bg: #1e1f22;
+  --bg-2: #2b2d31;
+  --bg-3: #313338;
+  --primary: #5865f2;
+  --primary-dark: #4752c4;
+  --text: #ffffff;
+  --text-dim: #b5bac1;
+  --green: #23a55a;
+  --red: #f23f43;
+  --amber: #f0b232;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: "PingFang SC", -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.shell { display: flex; height: 100vh; }
+
+.sidebar {
+  width: 200px;
+  background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 18px;
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.brand-logo {
+  width: 32px; height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; color: #fff;
+  overflow: hidden;
+}
+
+.brand-logo img {
+  width: 78%; height: 78%;
+  /* 灰色线条 logo 反白，贴合渐变底 */
+  filter: brightness(0) invert(1);
+}
+
+.nav { flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+
+.nav-item {
+  text-align: left; padding: 10px 14px;
+  border: none; background: transparent;
+  color: var(--text-dim); font-size: 14px;
+  border-radius: 8px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-item:hover { background: var(--bg-3); color: var(--text); }
+.nav-item.active { background: var(--primary); color: #fff; }
+
+.sidebar-footer {
+  padding: 16px 18px; display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text-dim);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+.main { flex: 1; padding: 32px 40px; overflow-y: auto; }
+.page h1 { font-size: 20px; font-weight: 600; margin-bottom: 24px; }
+.hidden { display: none; }
+
+.table-wrap { background: var(--bg-2); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); overflow: hidden; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead { background: var(--bg-3); }
+th { text-align: left; padding: 14px 18px; color: var(--text-dim); font-weight: 500; font-size: 13px; }
+td { padding: 14px 18px; border-top: 1px solid rgba(255,255,255,0.06); color: var(--text); }
+td.mono { font-family: "SF Mono", monospace; font-size: 12px; color: var(--text-dim); }
+
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+.badge.approved { background: rgba(35,165,90,0.15); color: var(--green); }
+.badge.pending { background: rgba(240,178,50,0.15); color: var(--amber); }
+
+.btn {
+  padding: 6px 14px; border: none; border-radius: 8px;
+  background: var(--primary); color: #fff; font-size: 13px; cursor: pointer;
+  transition: background 0.15s;
+}
+.btn:hover { background: var(--primary-dark); }
+.btn.approve { background: var(--green); }
+.btn.reject { background: var(--red); }
+
+.form-row { display: flex; align-items: center; gap: 12px; max-width: 420px; }
+.form-row input, .form-row textarea {
+  padding: 10px 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+  background: var(--bg-3); color: var(--text); font-size: 14px; outline: none;
+}
+.form-row input:focus, .form-row textarea:focus { border-color: var(--primary); }
+.form-row textarea {
+  width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; line-height: 1.5; resize: vertical;
+}
+h2 { margin: 24px 0 12px; font-size: 15px; color: var(--text); }
+.desc { margin-top: 16px; color: var(--text-dim); font-size: 14px; }
+.sidebar-footer .admin-link {
+  color: var(--primary); text-decoration: none; font-size: 13px; font-weight: 500;
+}
+.sidebar-footer .admin-link:hover { text-decoration: underline; }
+.count { color: var(--text-dim); font-size: 12px; margin-left: 4px; }

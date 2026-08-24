@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = [
+    "core",
+    "server",
+    "push",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["LonIsle Contributors"]
+
+[workspace.dependencies]
+# 共享核心依赖版本，供 core / server 复用，保证一致性
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["ws", "http1", "tokio", "multipart"] }
+tower = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+prost = "0.13"
+prost-build = "0.13"
+bytes = "1"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+base32 = "0.5"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+futures-util = "0.3"
+tokio-tungstenite = "0.24"
+rust-embed = "8"
+clap = { version = "4", features = ["derive", "env"] }
+bip39 = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+aes-gcm = "0.10"
+hkdf = "0.12"
+jsonwebtoken = "9"
+rcgen = "0.13"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+base64 = "0.22"
+
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }

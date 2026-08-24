@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LonIsle 推送网络 · 服务目录</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-logo"><img src="logo.svg" alt="LonIsle" /></div><span>Push 网络</span></div>
+      <nav class="nav">
+        <button class="nav-item active" data-page="directory-public">服务目录</button>
+        <button class="nav-item" data-page="apply">申请入列</button>
+      </nav>
+      <div class="sidebar-footer"><a href="admin.html" class="admin-link">管理入口 →</a></div>
+    </aside>
+
+    <main class="main">
+      <!-- 服务目录（公开，无需管理 Key） -->
+      <section id="page-directory-public" class="page">
+        <h1>服务目录</h1>
+        <p class="desc">已通过审核并上架的 LonIsle 聊天服务。选择感兴趣的服务，复制地址在客户端中添加。</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>状态</th><th>名称</th><th>描述</th><th>地址</th><th>加入模式</th><th>操作</th></tr></thead>
+            <tbody id="directory-public-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 申请入列（服务器自助，公开，无需管理 Key） -->
+      <section id="page-apply" class="page hidden">
+        <h1>申请加入推送网络</h1>
+        <p class="desc">聊天服务器运维者在此提交入列申请。流程：<b>提交申请 → 管理员在管理端审核通过 → 服务器调用 <code>/directory/register</code> 上架 → 用户即可在「服务目录」中看到本服务。</b></p>
+        <div class="form-row">
+          <label>服务器 ID</label>
+          <input id="apply-id" placeholder="服务器公钥 ID（与推送请求 x-server-id 一致）" />
+        </div>
+        <div class="form-row">
+          <label>服务描述</label>
+          <input id="apply-desc" placeholder="一句话介绍本服务器（如：LonIsle 主社区）" />
+        </div>
+        <div class="form-row">
+          <label>健康检查地址</label>
+          <input id="apply-health" placeholder="https://your-host:8080/status" />
+        </div>
+        <div class="form-row">
+          <button class="btn" id="apply-submit">提交申请</button>
+        </div>
+        <p class="desc" id="apply-result"></p>
+        <p class="desc">健康检查地址说明：填服务器的公开状态接口（如 <code>https://host:8080/status</code>），提交时需返回 200；通过后 push 会每 60 秒探测该地址，用于判定服务在线/离线（异常则显示离线并暂停推送资格）。</p>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
