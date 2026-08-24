@@ -56,3 +56,7 @@ Thumbs.db
 # 本地开发工具数据（计划/日志，勿提交）
 /.codebuddy/
 /.workbuddy/
+
+# 开发内部文档（需求/概览，勿公开）
+/REQUIREMENTS.md
+/overview.md
