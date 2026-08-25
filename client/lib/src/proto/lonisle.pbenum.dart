@@ -1,6 +1,6 @@
 // This is a generated file - do not edit.
 //
-// Generated from proto/lonisle.proto.
+// Generated from lonisle.proto.
 
 // @dart = 3.3
 

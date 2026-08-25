@@ -165,6 +165,7 @@ async fn public_status(State(state): State<Arc<AppState>>) -> Html<String> {
         "online": state.online.lock().await.len(),
         "total": members.len(),
         "protocol_version": lonisle_core::version::PROTOCOL_VERSION,
+        "server_version": crate::SERVER_VERSION,
     });
     Html(body.to_string())
 }
@@ -496,6 +497,7 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Html<String> {
         "member_count": member_count,
         "online": state.online.lock().await.len(),
         "protocol_version": lonisle_core::version::PROTOCOL_VERSION,
+        "server_version": crate::SERVER_VERSION,
     });
 
     Html(body.to_string())

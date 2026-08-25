@@ -50,6 +50,7 @@ class ConnectionService {
   String serverId = '';
   String serverName = '';
   String serverDesc = '';
+  String serverVersion = '';          // 服务端编译时间版本（YYYYMMDDHHMM）
   String serverFingerprint = '';
   String migrationTarget = '';       // 迁移目标地址（P1）
   String migrationFingerprint = '';  // 迁移目标指纹（P1）
@@ -379,6 +380,7 @@ class ConnectionService {
     serverStrategy = info.strategy.value;
     rateLimitPerMinute = info.rateLimitPerMinute;
     maxAttachmentSize = info.maxAttachmentSize.toInt();
+    if (info.serverVersion.isNotEmpty) serverVersion = info.serverVersion;
   }
 
   /// 发送文本消息

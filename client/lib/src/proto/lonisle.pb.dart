@@ -1,6 +1,6 @@
 // This is a generated file - do not edit.
 //
-// Generated from proto/lonisle.proto.
+// Generated from lonisle.proto.
 
 // @dart = 3.3
 
@@ -796,6 +796,7 @@ class ServerInfo extends $pb.GeneratedMessage {
     $core.int? rateLimitPerMinute,
     $fixnum.Int64? maxAttachmentSize,
     $fixnum.Int64? attachmentQuota,
+    $core.String? serverVersion,
   }) {
     final result = create();
     if (serverId != null) result.serverId = serverId;
@@ -808,6 +809,7 @@ class ServerInfo extends $pb.GeneratedMessage {
       result.rateLimitPerMinute = rateLimitPerMinute;
     if (maxAttachmentSize != null) result.maxAttachmentSize = maxAttachmentSize;
     if (attachmentQuota != null) result.attachmentQuota = attachmentQuota;
+    if (serverVersion != null) result.serverVersion = serverVersion;
     return result;
   }
 
@@ -839,6 +841,7 @@ class ServerInfo extends $pb.GeneratedMessage {
     ..a<$fixnum.Int64>(
         9, _omitFieldNames ? '' : 'attachmentQuota', $pb.PbFieldType.OU6,
         defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aOS(10, _omitFieldNames ? '' : 'serverVersion')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -939,6 +942,15 @@ class ServerInfo extends $pb.GeneratedMessage {
   $core.bool hasAttachmentQuota() => $_has(8);
   @$pb.TagNumber(9)
   void clearAttachmentQuota() => $_clearField(9);
+
+  @$pb.TagNumber(10)
+  $core.String get serverVersion => $_getSZ(9);
+  @$pb.TagNumber(10)
+  set serverVersion($core.String value) => $_setString(9, value);
+  @$pb.TagNumber(10)
+  $core.bool hasServerVersion() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearServerVersion() => $_clearField(10);
 }
 
 /// 管理员 → 服务器：更新服务器设置

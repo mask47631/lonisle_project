@@ -652,6 +652,7 @@ fn server_info(state: &Arc<AppState>, meta: &storage::ServerMeta) -> proto::Serv
         rate_limit_per_minute: meta.rate_limit_per_minute,
         max_attachment_size: meta.max_attachment_size,
         attachment_quota: 0, // 已取消单成员附件总配额（字段保留兼容）
+        server_version: crate::SERVER_VERSION.to_string(),
     }
 }
 

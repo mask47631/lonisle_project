@@ -1147,6 +1147,7 @@ void _showServerInfo(BuildContext context, ServerConnection sc) {
             _infoRow('加入策略', strategyLabel),
             _infoRow('成员', '$online 在线 / $total 人'),
             _infoRow('服务器状态', statusLabel),
+            _infoRow('服务端版本', conn.serverVersion.isEmpty ? '未知' : conn.serverVersion),
             _infoRow('发言限速', rate),
             _infoRow('附件上限', maxAtt),
             _infoRow('地址', addr),

@@ -181,9 +181,13 @@ fn json_err(status: axum::http::StatusCode, msg: &str) -> Response {
 
 // ---- 处理器 ----
 
-/// 健康监测：返回 200（白名单申请前置校验用）
+/// 健康监测：返回 200 + 版本（白名单申请前置校验用）
 async fn health() -> Response {
-    Json(json!({"ok": true})).into_response()
+    Json(json!({
+        "ok": true,
+        "server_version": crate::SERVER_VERSION,
+    }))
+    .into_response()
 }
 
 /// 客户端注册设备 Token

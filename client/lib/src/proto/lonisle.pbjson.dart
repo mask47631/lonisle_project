@@ -1,6 +1,6 @@
 // This is a generated file - do not edit.
 //
-// Generated from proto/lonisle.proto.
+// Generated from lonisle.proto.
 
 // @dart = 3.3
 
@@ -321,6 +321,7 @@ const ServerInfo$json = {
       '10': 'maxAttachmentSize'
     },
     {'1': 'attachment_quota', '3': 9, '4': 1, '5': 4, '10': 'attachmentQuota'},
+    {'1': 'server_version', '3': 10, '4': 1, '5': 9, '10': 'serverVersion'},
   ],
 };
 
@@ -332,7 +333,7 @@ final $typed_data.Uint8List serverInfoDescriptor = $convert.base64Decode(
     'RlZ3lSCHN0cmF0ZWd5EhIKBGljb24YBiABKAlSBGljb24SMQoVcmF0ZV9saW1pdF9wZXJfbWlu'
     'dXRlGAcgASgNUhJyYXRlTGltaXRQZXJNaW51dGUSLgoTbWF4X2F0dGFjaG1lbnRfc2l6ZRgIIA'
     'EoBFIRbWF4QXR0YWNobWVudFNpemUSKQoQYXR0YWNobWVudF9xdW90YRgJIAEoBFIPYXR0YWNo'
-    'bWVudFF1b3Rh');
+    'bWVudFF1b3RhEiUKDnNlcnZlcl92ZXJzaW9uGAogASgJUg1zZXJ2ZXJWZXJzaW9u');
 
 @$core.Deprecated('Use updateServerSettingsRequestDescriptor instead')
 const UpdateServerSettingsRequest$json = {
