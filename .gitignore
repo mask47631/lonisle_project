@@ -60,3 +60,6 @@ Thumbs.db
 # 开发内部文档（需求/概览，勿公开）
 /REQUIREMENTS.md
 /overview.md
+
+# LiveKit 部署配置（含密钥，不入库）
+livekit.yaml
