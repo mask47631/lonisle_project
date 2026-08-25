@@ -37,22 +37,27 @@ jobs:
       fail-fast: false
       matrix:
         service: [lonisle-server, lonisle-push]
+        target:
+          - x86_64-pc-windows-msvc
+          - aarch64-pc-windows-msvc
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+        # include 为每个 target 补充 os/kind（必须含 target 才能与 base 组合合并）
         include:
-          # ---------- Windows ----------
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             kind: native
           - target: aarch64-pc-windows-msvc
             os: windows-latest
             kind: win-arm64
-          # ---------- Linux ----------
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             kind: native
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             kind: linux-cross
-          # ---------- macOS ----------
           - target: aarch64-apple-darwin
             os: macos-latest
             kind: native
