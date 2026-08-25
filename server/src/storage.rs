@@ -296,7 +296,8 @@ pub struct AttachmentRecord {
     pub kind: String,             // image / video / audio / file
     pub size: u64,
     pub mime: String,
-    pub path: String,             // 原文件相对路径
+    pub path: String,             // 原文件相对路径（内容寻址：attachments/{sha256}）
+    pub content_hash: String,     // 文件内容 SHA256（去重，空=旧数据未计算）
     pub thumbnail_path: Option<String>,
     pub width: u32,
     pub height: u32,
@@ -528,6 +529,9 @@ pub trait Storage: Send + Sync {
 
     /// 列出某消息的附件。
     async fn list_attachments_for_message(&self, msg_id: &str) -> Result<Vec<AttachmentRecord>, StorageError>;
+
+    /// 统计引用同一文件路径的附件数量（附件去重：删除时判断是否仍被引用）。
+    async fn count_attachments_by_path(&self, path: &str) -> Result<u64, StorageError>;
 
     /// 删除附件记录。
     async fn delete_attachment(&self, attachment_id: &str) -> Result<(), StorageError>;
@@ -825,6 +829,7 @@ impl SqliteStorage {
                 size           INTEGER NOT NULL,
                 mime           TEXT NOT NULL,
                 path           TEXT NOT NULL,
+                content_hash   TEXT NOT NULL DEFAULT '',
                 thumbnail_path TEXT,
                 width          INTEGER NOT NULL DEFAULT 0,
                 height         INTEGER NOT NULL DEFAULT 0,
@@ -853,6 +858,16 @@ impl SqliteStorage {
             .execute(&self.pool)
             .await
             .ok(); // 列已存在则忽略
+        // 附件去重：content_hash 列（旧库迁移，同 filename 方式容错）
+        sqlx::query("ALTER TABLE attachments ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''")
+            .execute(&self.pool)
+            .await
+            .ok(); // 列已存在则忽略
+        // 内容寻址索引（去重查询）
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_attachments_hash ON attachments (content_hash)")
+            .execute(&self.pool)
+            .await
+            .ok();
 
         // Reaction 表（M5）
         sqlx::query(
@@ -1911,8 +1926,8 @@ impl Storage for SqliteStorage {
         sqlx::query(
             r#"
             INSERT INTO attachments (attachment_id, msg_id, kind, size, mime, path,
-                                     thumbnail_path, width, height, duration, author_id, created_at, filename)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     content_hash, thumbnail_path, width, height, duration, author_id, created_at, filename)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&att.attachment_id)
@@ -1921,6 +1936,7 @@ impl Storage for SqliteStorage {
         .bind(att.size as i64)
         .bind(&att.mime)
         .bind(&att.path)
+        .bind(&att.content_hash)
         .bind(&att.thumbnail_path)
         .bind(att.width as i64)
         .bind(att.height as i64)
@@ -1935,7 +1951,7 @@ impl Storage for SqliteStorage {
 
     async fn get_attachment(&self, attachment_id: &str) -> Result<Option<AttachmentRecord>, StorageError> {
         let row = sqlx::query(
-            "SELECT attachment_id, msg_id, kind, size, mime, path, thumbnail_path, width, height, duration, author_id, created_at, filename FROM attachments WHERE attachment_id = ?",
+            "SELECT attachment_id, msg_id, kind, size, mime, path, content_hash, thumbnail_path, width, height, duration, author_id, created_at, filename FROM attachments WHERE attachment_id = ?",
         )
         .bind(attachment_id)
         .fetch_optional(&self.pool)
@@ -1959,6 +1975,16 @@ impl Storage for SqliteStorage {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    async fn count_attachments_by_path(&self, path: &str) -> Result<u64, StorageError> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM attachments WHERE path = ?",
+        )
+        .bind(path)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count as u64)
     }
 
     async fn delete_attachments_for_message(&self, msg_id: &str) -> Result<Vec<AttachmentRecord>, StorageError> {
@@ -2293,6 +2319,7 @@ fn row_to_attachment(r: sqlx::sqlite::SqliteRow) -> AttachmentRecord {
         size: r.get::<i64, _>("size") as u64,
         mime: r.get("mime"),
         path: r.get("path"),
+        content_hash: r.get("content_hash"),
         thumbnail_path: r.get("thumbnail_path"),
         width: r.get::<i64, _>("width") as u32,
         height: r.get::<i64, _>("height") as u32,

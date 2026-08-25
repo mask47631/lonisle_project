@@ -1700,9 +1700,19 @@ async fn handle_delete_message(
     // 级联删除该消息的附件（F-MEDIA-9：管理员删消息连带清附件）
     if let Some(att) = storage::attachment_from_json(&existing.attachment_json) {
         if let Ok(Some(record)) = state.storage.get_attachment(&att.attachment_id).await {
-            let base = crate::attachments::state_dir(state);
-            let _ = std::fs::remove_file(std::path::Path::new(&base).join(&record.path));
+            // 先删记录，再按引用计数删文件（附件去重：共享文件仅最后引用删除时落盘）
+            let path = record.path.clone();
             let _ = state.storage.delete_attachment(&att.attachment_id).await;
+            if state
+                .storage
+                .count_attachments_by_path(&path)
+                .await
+                .unwrap_or(1)
+                == 0
+            {
+                let base = crate::attachments::state_dir(state);
+                let _ = std::fs::remove_file(std::path::Path::new(&base).join(&path));
+            }
         }
     }
 

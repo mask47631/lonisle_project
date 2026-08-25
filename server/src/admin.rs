@@ -1343,14 +1343,23 @@ async fn api_clear_all(State(state): State<Arc<AppState>>) -> Html<String> {
     json_ok()
 }
 
-/// 级联清理消息关联的附件（记录 + 文件）。
+/// 级联清理消息关联的附件（记录 + 文件；附件去重：共享文件仅最后引用删除时落盘）。
 async fn cleanup_attachments_for_messages(state: &Arc<AppState>, records: &[crate::storage::StoredMessage]) {
     for msg in records {
         if let Ok(attachments) = state.storage.list_attachments_for_message(&msg.msg_id).await {
             for att in attachments {
+                let path = att.path.clone();
                 let _ = state.storage.delete_attachment(&att.attachment_id).await;
-                let full = std::path::Path::new(&state.data_dir).join(&att.path);
-                let _ = std::fs::remove_file(&full);
+                if state
+                    .storage
+                    .count_attachments_by_path(&path)
+                    .await
+                    .unwrap_or(1)
+                    == 0
+                {
+                    let full = std::path::Path::new(&state.data_dir).join(&path);
+                    let _ = std::fs::remove_file(&full);
+                }
             }
         }
     }

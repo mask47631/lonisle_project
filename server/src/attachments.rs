@@ -13,6 +13,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde_json::json;
+use sha2::Digest as _;
 
 use crate::storage::AttachmentRecord;
 use crate::ws::AppState;
@@ -90,26 +91,36 @@ async fn upload(
         return json_err(413, "附件超过大小上限");
     }
 
-    // 生成附件 ID + 写文件
+    // 生成附件 ID + 内容寻址去重（同内容文件只存一份）
     let attachment_id = format!("att-{}", unique_id());
     let mime = mime_guess_from_name(&filename).to_string();
+    // 内容去重键 = SHA256 + 大小（双条件：不同大小的文件即使 hash 相同也不复用，
+    // 文件名形如 {hash}-{size}，同 hash 不同 size 各自独立存储）
+    let content_hash = hex::encode(sha2::Sha256::digest(&data));
+    let size = data.len() as u64;
+    let storage_name = format!("{}-{}", content_hash, size);
     let (width, height, duration) = (0u32, 0u32, 0u32); // M5 简化：不解析媒体尺寸
 
     let dir = std::path::Path::new(&state_dir(&state)).join(ATTACHMENTS_DIR);
     std::fs::create_dir_all(&dir).ok();
-    let file_path = dir.join(&attachment_id);
-    if std::fs::write(&file_path, &data).is_err() {
-        return json_err(500, "写文件失败");
+    let file_path = dir.join(&storage_name);
+    if !file_path.exists() {
+        // 新内容（hash+size 组合）：写盘
+        if std::fs::write(&file_path, &data).is_err() {
+            return json_err(500, "写文件失败");
+        }
     }
+    // 已存在同 hash+同 size 文件：跳过写盘（去重生效，仅新增记录引用同一文件）
 
     // 落库
     let record = AttachmentRecord {
         attachment_id: attachment_id.clone(),
         msg_id,
         kind,
-        size: data.len() as u64,
+        size,
         mime,
-        path: format!("{}/{}", ATTACHMENTS_DIR, attachment_id),
+        path: format!("{}/{}", ATTACHMENTS_DIR, storage_name),
+        content_hash,
         thumbnail_path: None,
         width,
         height,
@@ -190,13 +201,21 @@ async fn delete(
         _ => return json_err(404, "附件不存在"),
     };
 
-    // 删除文件
-    let base = state_dir(&state);
-    let full = std::path::Path::new(&base).join(&record.path);
-    let _ = std::fs::remove_file(&full);
-
+    // 删除记录后检查引用：同路径（内容寻址哈希文件）仍被其他附件引用则保留文件，
+    // 否则删除（附件去重：同一文件仅被最后一个引用删除时真正落盘）
+    let path = record.path.clone();
     if let Err(e) = state.storage.delete_attachment(&id).await {
         return json_err(500, &e.to_string());
+    }
+    let refs = state
+        .storage
+        .count_attachments_by_path(&path)
+        .await
+        .unwrap_or(1);
+    if refs == 0 {
+        let base = state_dir(&state);
+        let full = std::path::Path::new(&base).join(&path);
+        let _ = std::fs::remove_file(&full);
     }
     Json(json!({"ok": true})).into_response()
 }
