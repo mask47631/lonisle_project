@@ -80,12 +80,12 @@ body {
 .page h1 { font-size: 20px; font-weight: 600; margin-bottom: 24px; }
 .hidden { display: none; }
 
-.table-wrap { background: var(--bg-2); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); overflow: hidden; }
+.table-wrap { background: var(--bg-2); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 thead { background: var(--bg-3); }
-th { text-align: left; padding: 14px 18px; color: var(--text-dim); font-weight: 500; font-size: 13px; }
+th { text-align: left; padding: 14px 18px; color: var(--text-dim); font-weight: 500; font-size: 13px; white-space: nowrap; }
 td { padding: 14px 18px; border-top: 1px solid rgba(255,255,255,0.06); color: var(--text); }
-td.mono { font-family: "SF Mono", monospace; font-size: 12px; color: var(--text-dim); }
+td.mono { font-family: "SF Mono", monospace; font-size: 12px; color: var(--text-dim); word-break: break-all; }
 
 .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
 .badge.approved { background: rgba(35,165,90,0.15); color: var(--green); }
@@ -100,16 +100,21 @@ td.mono { font-family: "SF Mono", monospace; font-size: 12px; color: var(--text-
 .btn.approve { background: var(--green); }
 .btn.reject { background: var(--red); }
 
-.form-row { display: flex; align-items: center; gap: 12px; max-width: 420px; }
-.form-row input, .form-row textarea {
+.form-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.form-row input, .form-row textarea, .form-row select {
   padding: 10px 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
   background: var(--bg-3); color: var(--text); font-size: 14px; outline: none;
+  flex: 1 1 220px; min-width: 0;
 }
-.form-row input:focus, .form-row textarea:focus { border-color: var(--primary); }
+.form-row input:focus, .form-row textarea:focus, .form-row select:focus { border-color: var(--primary); }
 .form-row textarea {
-  width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  flex-basis: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px; line-height: 1.5; resize: vertical;
 }
+/* select 下拉选项（深色主题，避免白底突兀） */
+select option { background: var(--bg-3); color: var(--text); }
+.form-row label { white-space: nowrap; color: var(--text-dim); font-size: 14px; }
 h2 { margin: 24px 0 12px; font-size: 15px; color: var(--text); }
 .desc { margin-top: 16px; color: var(--text-dim); font-size: 14px; }
 .sidebar-footer .admin-link {

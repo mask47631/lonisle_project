@@ -77,6 +77,17 @@ async function approve(id, ok) {
   fetchWhitelist();
 }
 
+async function addWhitelist() {
+  const id = document.getElementById("whitelist-add-id").value.trim();
+  if (!id) { alert("请输入服务器 ID"); return; }
+  const url = document.getElementById("whitelist-add-url").value.trim();
+  await postJSON("/admin/whitelist/add", { server_id: id, health_url: url });
+  document.getElementById("whitelist-add-id").value = "";
+  document.getElementById("whitelist-add-url").value = "";
+  alert("已手动添加到白名单");
+  fetchWhitelist();
+}
+
 // ---- 限速 ----
 async function fetchRate() {
   const data = await getJSON("/admin/rate-limit");
@@ -238,6 +249,7 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
 document.getElementById("rate-save").addEventListener("click", saveRate);
 document.getElementById("mode-save").addEventListener("click", saveMode);
 document.getElementById("blacklist-add").addEventListener("click", addBlacklist);
+document.getElementById("whitelist-add").addEventListener("click", addWhitelist);
 document.getElementById("fcm-save").addEventListener("click", saveFcm);
 document.getElementById("tls-save").addEventListener("click", saveTls);
 

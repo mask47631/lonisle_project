@@ -26,6 +26,11 @@
     <main class="main">
       <section id="page-whitelist" class="page">
         <h1>白名单审核</h1>
+        <div class="form-row">
+          <input id="whitelist-add-id" placeholder="服务器 ID（手动添加，跳过申请流程）" style="flex-basis:360px" />
+          <input id="whitelist-add-url" placeholder="health_url（可选）" style="flex-basis:220px" />
+          <button class="btn" id="whitelist-add">手动添加</button>
+        </div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>服务器 ID</th><th>状态</th><th>申请时间</th><th>操作</th></tr></thead>

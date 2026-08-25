@@ -27,6 +27,7 @@ pub fn build_admin_router(state: Arc<AppState>) -> Router {
         .route("/admin/whitelist", get(list_whitelist))
         .route("/admin/whitelist/approve", post(approve_whitelist))
         .route("/admin/whitelist/reject", post(reject_whitelist))
+        .route("/admin/whitelist/add", post(add_whitelist))
         .route("/admin/rate-limit", get(get_rate))
         .route("/admin/rate-limit/set", post(set_rate))
         .route("/admin/mode", get(get_mode).post(set_mode))
@@ -280,6 +281,39 @@ async fn set_tls_config(
 struct ApproveBody {
     server_id: String,
     approve: bool,
+}
+
+#[derive(Deserialize)]
+struct AddWhitelistBody {
+    server_id: String,
+    health_url: Option<String>,
+}
+
+/// 手动添加白名单（管理员主动入列，跳过申请流程；同时清除拒绝冷却）
+async fn add_whitelist(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AddWhitelistBody>,
+) -> Response {
+    let server_id = body.server_id.trim().to_string();
+    if server_id.is_empty() {
+        return json_err("server_id 不能为空");
+    }
+    let entry = WhitelistEntry {
+        server_id: server_id.clone(),
+        approved: true,
+        applied_at: current_unix_time(),
+        health_url: body.health_url.unwrap_or_default().trim().to_string(),
+        paused: false,
+    };
+    if let Err(e) = state.storage.upsert_whitelist(&entry).await {
+        return json_err(&e.to_string());
+    }
+    // 手动入列后清除拒绝冷却（若存在），避免冷却期残留
+    if let Err(e) = state.storage.set_cooldown(&server_id, 0).await {
+        return json_err(&e.to_string());
+    }
+    tracing::info!(server_id = %server_id, "手动添加白名单");
+    json_ok()
 }
 
 #[derive(Deserialize)]
