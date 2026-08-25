@@ -147,6 +147,30 @@ cargo build --release -p lonisle-push
 cargo test
 ```
 
+> 前置依赖：仅需 Rust 工具链。protoc 由 `protoc-bin-vendored` 在构建时自动下载（见 `core/Cargo.toml`），无需系统安装。
+
+### CI 交叉编译（GitHub Actions）
+
+`.github/workflows/build-binaries.yml` 通过 GitHub Actions 矩阵编译两个服务的可执行文件，覆盖 6 个目标平台：
+
+| 目标平台 | 构建方式 |
+| --- | --- |
+| Windows x64（x86_64-pc-windows-msvc） | Windows runner 原生编译 |
+| Windows ARM64（aarch64-pc-windows-msvc） | LLVM 交叉编译（clang-cl + llvm-lib + lld-link，使用 runner 自带 VS/Windows SDK） |
+| Linux x64（x86_64-unknown-linux-gnu） | Ubuntu runner 原生编译 |
+| Linux ARM64（aarch64-unknown-linux-gnu） | gcc-aarch64-linux-gnu 交叉编译 |
+| macOS ARM64（aarch64-apple-darwin） | macOS runner 原生编译 |
+| macOS x86_64（x86_64-apple-darwin） | clang 交叉编译 |
+
+触发方式：
+
+- **手动**：仓库 Actions 页面 → 本 workflow → Run workflow
+- **发布**：推送 `v*` tag（如 `git tag v0.1.0 && git push origin v0.1.0`），构建后自动打包 12 个 zip 并发布 GitHub Release
+
+产物命名：`lonisle-server-<target>.zip` / `lonisle-push-<target>.zip`（zip 内为单个可执行文件，Web 资源已通过 rust-embed 内嵌）。
+
+> 注：`server/build.rs` 与 `push/build.rs` 使用纯 Rust 生成版本号（UTC 时间 `YYYYMMDDHHMM`），不再依赖 `date` 命令，Windows 亦可编译。
+
 ### 构建客户端
 
 ```bash

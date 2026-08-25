@@ -32,5 +32,7 @@ tracing.workspace = true
 
 [build-dependencies]
 prost-build.workspace = true
+# 构建时自动下载 protoc 二进制，跨平台/交叉编译无需系统安装 protoc
+protoc-bin-vendored = "3.2"
 
 [dev-dependencies]

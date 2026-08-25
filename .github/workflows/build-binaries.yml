@@ -1,0 +1,150 @@
+# ============================================================
+# LonIsle 跨平台可执行文件构建（GitHub Actions）
+#
+# 功能：
+#   - 矩阵编译 lonisle-server / lonisle-push 两个服务
+#   - 覆盖 6 个目标平台：Windows(x64/ARM64)、Linux(x64/ARM64)、macOS(x64/ARM64)
+#   - 交叉编译策略：
+#       Windows x64   → 原生 MSVC 编译（windows-latest runner 自带 VS）
+#       Windows ARM64 → LLVM 交叉编译（clang-cl + llvm-lib + lld-link，
+#                       使用 runner 自带的 VS/Windows SDK 与 LLVM 工具链）
+#       Linux x64     → 原生 GNU 编译
+#       Linux ARM64   → gcc-aarch64-linux-gnu 交叉编译
+#       macOS ARM64   → 原生编译（Apple Silicon runner）
+#       macOS x86_64  → clang 交叉编译（arm64 runner 上交叉）
+#   - 产物打包 zip 上传为 Actions Artifact；推送 v* tag 时自动发布 GitHub Release
+#
+# 触发方式：
+#   1. 手动触发：Actions 页面 → 本 workflow → Run workflow
+#   2. 推送 tag：git tag v0.1.0 && git push origin v0.1.0
+# ============================================================
+name: 构建跨平台可执行文件
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.service }} · ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [lonisle-server, lonisle-push]
+        include:
+          # ---------- Windows ----------
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            kind: native
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            kind: win-arm64
+          # ---------- Linux ----------
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            kind: native
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            kind: linux-cross
+          # ---------- macOS ----------
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            kind: native
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            kind: native
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链与目标
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 缓存 Cargo 构建
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}-${{ matrix.service }}
+
+      # Windows ARM64：使用 runner 自带的 LLVM（clang-cl/llvm-lib/lld-link）
+      # 交叉编译 MSVC ABI，C 头文件与 ARM64 导入库取自 VS/Windows SDK
+      - name: 配置 Windows ARM64 交叉编译工具链
+        if: matrix.kind == 'win-arm64'
+        shell: pwsh
+        run: |
+          "CC_aarch64_pc_windows_msvc=clang-cl --target=aarch64-pc-windows-msvc" >> $env:GITHUB_ENV
+          "AR_aarch64_pc_windows_msvc=llvm-lib" >> $env:GITHUB_ENV
+          "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=lld-link" >> $env:GITHUB_ENV
+
+      # Linux ARM64：安装 GNU 交叉编译工具链
+      - name: 安装 Linux ARM64 交叉工具链
+        if: matrix.kind == 'linux-cross'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: 编译 ${{ matrix.service }}
+        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.service }}
+
+      - name: 打包产物（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $zip = "dist/${{ matrix.service }}-${{ matrix.target }}.zip"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.service }}.exe" -DestinationPath $zip
+          "ZIP=$zip" >> $env:GITHUB_ENV
+
+      - name: 打包产物（Linux / macOS）
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          zip="dist/${{ matrix.service }}-${{ matrix.target }}.zip"
+          cd "target/${{ matrix.target }}/release"
+          zip -q "../../../$zip" "${{ matrix.service }}"
+          cd - >/dev/null
+          echo "ZIP=$zip" >> "$GITHUB_ENV"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.service }}-${{ matrix.target }}
+          path: ${{ env.ZIP }}
+          if-no-files-found: error
+
+  # 推送 v* tag 时，将全部 12 个 zip 合并发布为 GitHub Release
+  release:
+    name: 发布 GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 整理产物目录
+        run: |
+          mkdir -p dist
+          cp artifacts/*.zip dist/
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
