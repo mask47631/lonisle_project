@@ -1848,6 +1848,23 @@ class _MessageBubble extends StatelessWidget {
                       color: LonIsleTheme.textWhite,
                     ),
                   ),
+                  // 自己发言标识（重名时可区分）
+                  if (isSelf) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: LonIsleTheme.primary.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text('我',
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: LonIsleTheme.primary,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   const Text(
                     '消息已删除',
@@ -1895,6 +1912,23 @@ class _MessageBubble extends StatelessWidget {
                         color: LonIsleTheme.textWhite,
                       ),
                     ),
+                    // 自己发言标识（重名时可区分）
+                    if (isSelf) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: LonIsleTheme.primary.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('我',
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: LonIsleTheme.primary,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    ],
                     const SizedBox(width: 8),
                     Text(
                       timeStr,
@@ -2927,10 +2961,11 @@ class _MessageInputState extends State<_MessageInput> {
         if (result == null || result.files.single.path == null) return;
         final path = result.files.single.path!;
         final data = await File(path).readAsBytes();
-        await sc.sendAttachment(
+        await _sendWithProgress(context, (onUpload) => sc.sendAttachment(
             data: data,
             filename: result.files.single.name,
-            kind: 'image');
+            kind: 'image',
+            onUpload: onUpload));
       } else if (kind == 'video' || kind == 'audio') {
         // 视频/音频：带类型过滤选择，读取时长元数据（F-MEDIA-8）
         final result = await FilePicker.platform.pickFiles(
@@ -2943,7 +2978,7 @@ class _MessageInputState extends State<_MessageInput> {
           // 视频：探测时长与画面尺寸 + 抽取首帧缩略图（F-MEDIA-1/8）
           final meta = await _probeVideoMeta(path);
           final thumb = await VideoThumb.generate(path);
-          await sc.sendAttachment(
+          await _sendWithProgress(context, (onUpload) => sc.sendAttachment(
             data: data,
             filename: result.files.single.name,
             kind: 'video',
@@ -2951,23 +2986,28 @@ class _MessageInputState extends State<_MessageInput> {
             width: meta.$2,
             height: meta.$3,
             thumbnail: thumb,
-          );
+            onUpload: onUpload,
+          ));
         } else {
           final duration = await _probeAudioDuration(path);
-          await sc.sendAttachment(
+          await _sendWithProgress(context, (onUpload) => sc.sendAttachment(
             data: data,
             filename: result.files.single.name,
             kind: 'audio',
             durationSec: duration,
-          );
+            onUpload: onUpload,
+          ));
         }
       } else {
         final result = await FilePicker.platform.pickFiles();
         if (result == null || result.files.single.path == null) return;
         final file = File(result.files.single.path!);
         final data = await file.readAsBytes();
-        await sc.sendAttachment(
-            data: data, filename: file.uri.pathSegments.last, kind: 'file');
+        await _sendWithProgress(context, (onUpload) => sc.sendAttachment(
+            data: data,
+            filename: file.uri.pathSegments.last,
+            kind: 'file',
+            onUpload: onUpload));
       }
     } catch (e) {
       if (mounted) {
@@ -2975,6 +3015,49 @@ class _MessageInputState extends State<_MessageInput> {
           SnackBar(content: Text('发送失败：$e')),
         );
       }
+    }
+  }
+
+  /// 带上传进度对话框发送附件（F-MEDIA 上传：indeterminate 进度条，传输完成后自动关闭）
+  Future<void> _sendWithProgress(
+    BuildContext context,
+    Future<void> Function(void Function()? onUpload) send,
+  ) async {
+    final navigator = Navigator.of(context);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: LonIsleTheme.bg2,
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('正在上传…',
+                style: TextStyle(color: LonIsleTheme.textWhite)),
+            SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.all(Radius.circular(4)),
+              child: LinearProgressIndicator(
+                minHeight: 6,
+                backgroundColor: LonIsleTheme.bg3,
+                color: LonIsleTheme.primary,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text('传输完成前请勿关闭',
+                style: TextStyle(color: LonIsleTheme.textDim, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+    try {
+      await send(() {
+        // no-op：当前用 indeterminate（传输中转圈），保留 hook 便于后续切真实百分比
+      });
+      if (navigator.mounted) navigator.pop();
+    } catch (e) {
+      if (navigator.mounted) navigator.pop();
+      rethrow;
     }
   }
 

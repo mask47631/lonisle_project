@@ -613,7 +613,7 @@ class ServerConnection extends ChangeNotifier {
 
   /// 发送附件消息（F-MEDIA-1：上传 → 发送带元数据消息）
   /// [durationSec] 音视频时长、[width]/[height] 媒体尺寸（F-MEDIA-8）、
-  /// [thumbnail] 视频首帧缩略图（F-MEDIA-1）
+  /// [thumbnail] 视频首帧缩略图（F-MEDIA-1）、[onUpload] 上传开始回调
   Future<void> sendAttachment({
     required Uint8List data,
     required String filename,
@@ -623,6 +623,7 @@ class ServerConnection extends ChangeNotifier {
     int width = 0,
     int height = 0,
     Uint8List? thumbnail,
+    void Function()? onUpload,
   }) async {
     final id = await IdentityService.instance.loadIdentity();
     if (id == null) return;
@@ -638,6 +639,7 @@ class ServerConnection extends ChangeNotifier {
         width: width,
         height: height,
         thumbnail: thumbnail,
+        onUpload: onUpload,
         serverAddress: '${connection.host}:${connection.port}',
       );
       await connection.sendAttachment(currentTopicId, caption, att);

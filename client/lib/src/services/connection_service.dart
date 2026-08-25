@@ -74,6 +74,12 @@ class ConnectionService {
   int _retryDelay = 1; // 指数退避起始秒
   static const _maxRetryDelay = 30;
 
+  // 心跳检测（TCP 半开检测：server 重启时连接不会触发 onDone，靠 PING/PONG 探活）
+  Timer? _pingTimer;
+  int _missedPings = 0;
+  static const _pingInterval = Duration(seconds: 20);
+  static const _pingMaxMiss = 3;
+
   /// 重连成功后的回调（由上层设置，用于重做 Hello/Join/Sync 握手）
   Future<void> Function()? onReconnected;
 
@@ -131,6 +137,7 @@ class ConnectionService {
     );
     _setStatus(ConnectionStatus.connected);
     _retryDelay = 1; // 连接成功重置退避
+    _startHeartbeat();
 
     // TOFU 钉住（握手已完成后 observed 已就绪）：
     // - 首次连接：pin 新指纹（DER + SPKI）
@@ -145,8 +152,34 @@ class ConnectionService {
   }
 
   void _onDisconnected() {
+    _pingTimer?.cancel();
     _setStatus(ConnectionStatus.disconnected);
     _scheduleReconnect();
+  }
+
+  /// 启动心跳：每 [_pingInterval] 发 PING，连续 [_pingMaxMiss] 次无响应
+  /// （收到任何数据都会重置）判定断线，强制断开连接触发自动重连。
+  /// 解决 server 重启时 TCP 半开连接（不触发 onDone/onError）导致客户端不重连的问题。
+  void _startHeartbeat() {
+    _pingTimer?.cancel();
+    _missedPings = 0;
+    _pingTimer = Timer.periodic(_pingInterval, (_) {
+      if (_status != ConnectionStatus.connected) return;
+      _missedPings++;
+      if (_missedPings >= _pingMaxMiss) {
+        // 判定断线：强制关闭触发 onDone → 自动重连
+        _pingTimer?.cancel();
+        try {
+          _channel?.sink.close();
+        } catch (_) {}
+        return;
+      }
+      try {
+        final env = pb.ClientEnvelope()
+          ..type = pb.ClientEnvelope_MsgType.PING;
+        _channel?.sink.add(env.writeToBuffer());
+      } catch (_) {}
+    });
   }
 
   /// 断线自动重连（指数退避；重连成功后由上层重做完整握手）
@@ -195,6 +228,8 @@ class ConnectionService {
 
   void _onData(dynamic data) {
     if (data is! List<int>) return;
+    // 收到任何数据（PONG/消息/回执）= 连接活着，重置心跳计数
+    _missedPings = 0;
     final env = pb.ServerEnvelope.fromBuffer(Uint8List.fromList(data));
 
     // 广播消息直接分发
@@ -845,6 +880,7 @@ class ConnectionService {
   }
 
   void dispose() {
+    _pingTimer?.cancel();
     _sub?.cancel();
     _channel?.sink.close();
     _statusController.close();

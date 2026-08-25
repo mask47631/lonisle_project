@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -171,6 +172,8 @@ class MediaService {
   /// [durationSec] 为音视频时长（秒，F-MEDIA-8），非音视频传 0。
   /// [width]/[height] 为媒体尺寸（视频由 video_player 探测），
   /// [thumbnail] 为外部生成的缩略图字节（视频首帧，F-MEDIA-1）。
+  /// [onUpload] 上传开始回调（UI 可用它打开进度对话框，完成或失败后须调用 [onUploaded]）
+  /// — 当前用 indeterminate 进度（传输完成才关闭），后续可换为真实百分比
   Future<pb.Attachment> upload({
     required Uint8List data,
     required String filename,
@@ -183,6 +186,7 @@ class MediaService {
     int height = 0,
     Uint8List? thumbnail,
     String? serverAddress,
+    void Function()? onUpload,
   }) async {
     final addr = _addr(serverAddress);
     final client = await _client(addr);
@@ -203,6 +207,8 @@ class MediaService {
     request.fields['kind'] = kind;
     request.fields['user_id'] = userId;
 
+    // UI 收到 onUpload 时打开进度对话框（indeterminate），完成/失败后由调用方关闭
+    onUpload?.call();
     final response = await client.send(request);
     final body = await response.stream.bytesToString();
     if (response.statusCode != 200) {
