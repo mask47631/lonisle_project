@@ -235,7 +235,12 @@ class MediaService {
         attachment.width = dims.$1;
         attachment.height = dims.$2;
       }
-      thumbnail ??= await generateImageThumbnail(data);
+      // GIF 等动态图不生成缩略图（缩略图是静态帧，会丢失动画），
+      // 直接使用原图展示
+      final isGif = _isGif(data, filename);
+      if (!isGif) {
+        thumbnail ??= await generateImageThumbnail(data);
+      }
     }
     // 统一上传缩略图（图片自动生成；视频取帧由调用方传入）
     if (thumbnail != null) {
@@ -248,6 +253,17 @@ class MediaService {
       }
     }
     return attachment;
+  }
+
+  /// 是否为 GIF 动态图（按内容魔数 + 扩展名判断）。
+  /// GIF 不做缩略图/缩放，保留动画直接使用原图。
+  static bool _isGif(Uint8List data, String filename) {
+    if (filename.toLowerCase().endsWith('.gif')) return true;
+    if (data.length >= 6) {
+      final head = String.fromCharCodes(data.sublist(0, 6));
+      if (head == 'GIF87a' || head == 'GIF89a') return true;
+    }
+    return false;
   }
 
   /// 上传缩略图（复用上传端点）。成功返回服务端生成的真实附件 ID。

@@ -2207,7 +2207,10 @@ class _AttachmentPreviewState extends State<_AttachmentPreview> {
                 ),
                 child: FutureBuilder<String?>(
                 future: () async {
-                  if (attachment.thumbnailId.isNotEmpty) {
+                  // GIF 动态图跳过缩略图（缩略图是静态帧），直接用原图保留动画
+                  final isGif =
+                      attachment.mime.toLowerCase().contains('gif');
+                  if (!isGif && attachment.thumbnailId.isNotEmpty) {
                     final thumb = await MediaService.instance
                         .downloadThumbnail(attachment.thumbnailId,
                             serverAddress: widget.serverAddress)
@@ -2238,17 +2241,18 @@ class _AttachmentPreviewState extends State<_AttachmentPreview> {
                             child: Image.file(
                               File(snap.data!),
                               fit: BoxFit.cover,
-                              cacheWidth: 440, // 限制解码内存（220dp × 2x）
+                              // GIF 等动态图不做缩放解码（cacheWidth 会让动画变静态帧），
+                              // 全尺寸解码以保留动画效果
+                              cacheWidth: attachment.mime
+                                      .toLowerCase()
+                                      .contains('gif')
+                                  ? null
+                                  : 440,
                               errorBuilder: (_, __, ___) => _iconRow(sizeLabel),
                             ),
                           ),
                         ),
-                        // 右上角下载按钮（图片）
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: _overlayDownloadButton(),
-                        ),
+                        // 消息流不显示下载按钮（点击进入全屏查看器后下载）
                       ],
                     );
                   }
@@ -2312,12 +2316,7 @@ class _AttachmentPreviewState extends State<_AttachmentPreview> {
                                   ),
                                 ),
                               ),
-                            // 右上角下载按钮（视频）
-                            Positioned(
-                              top: 4,
-                              right: 4,
-                              child: _overlayDownloadButton(),
-                            ),
+                            // 消息流不显示下载按钮（点击进入全屏查看器后下载）
                           ],
                         ),
                       ),
@@ -2404,22 +2403,6 @@ class _AttachmentPreviewState extends State<_AttachmentPreview> {
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
       visualDensity: VisualDensity.compact,
-    );
-  }
-
-  /// 下载按钮（图片/视频缩略图浮层样式：半透明黑底白图标）
-  Widget _overlayDownloadButton() {
-    return Material(
-      color: Colors.black54,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: _saveAs,
-        child: const Padding(
-          padding: EdgeInsets.all(4),
-          child: Icon(Icons.download, size: 16, color: Colors.white),
-        ),
-      ),
     );
   }
 
@@ -2936,16 +2919,18 @@ class _MessageInputState extends State<_MessageInput> {
       if (sc == null) return;
 
       if (kind == 'image') {
-        final picker = ImagePicker();
-        final xfile = await picker.pickImage(
-            source: ImageSource.gallery,
-            imageQuality: 90,
-            maxWidth: 4096);
-        if (xfile == null) return;
-        final data = await xfile.readAsBytes();
-        final name = xfile.name;
+        // 图片：用 file_picker 拿原始文件 —— image_picker 的 imageQuality
+        // 会把 GIF 等动态图重编码成静态帧，动态图必须原样上传
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+        );
+        if (result == null || result.files.single.path == null) return;
+        final path = result.files.single.path!;
+        final data = await File(path).readAsBytes();
         await sc.sendAttachment(
-            data: data, filename: name, kind: 'image');
+            data: data,
+            filename: result.files.single.name,
+            kind: 'image');
       } else if (kind == 'video' || kind == 'audio') {
         // 视频/音频：带类型过滤选择，读取时长元数据（F-MEDIA-8）
         final result = await FilePicker.platform.pickFiles(
