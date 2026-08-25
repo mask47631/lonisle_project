@@ -224,6 +224,8 @@ class ClientEnvelope_MsgType extends $pb.ProtobufEnum {
       ClientEnvelope_MsgType._(37, _omitEnumNames ? '' : 'JOIN_AV');
   static const ClientEnvelope_MsgType HISTORY =
       ClientEnvelope_MsgType._(38, _omitEnumNames ? '' : 'HISTORY');
+  static const ClientEnvelope_MsgType STICKER_PACKS_LIST =
+      ClientEnvelope_MsgType._(39, _omitEnumNames ? '' : 'STICKER_PACKS_LIST');
 
   static const $core.List<ClientEnvelope_MsgType> values =
       <ClientEnvelope_MsgType>[
@@ -266,10 +268,11 @@ class ClientEnvelope_MsgType extends $pb.ProtobufEnum {
     MENTION_READ_LIST,
     JOIN_AV,
     HISTORY,
+    STICKER_PACKS_LIST,
   ];
 
   static final $core.List<ClientEnvelope_MsgType?> _byValue =
-      $pb.ProtobufEnum.$_initByValueList(values, 38);
+      $pb.ProtobufEnum.$_initByValueList(values, 39);
   static ClientEnvelope_MsgType? valueOf($core.int value) =>
       value < 0 || value >= _byValue.length ? null : _byValue[value];
 
@@ -327,6 +330,12 @@ class ServerEnvelope_MsgType extends $pb.ProtobufEnum {
       ServerEnvelope_MsgType._(20, _omitEnumNames ? '' : 'SERVER_INFO_UPDATED');
   static const ServerEnvelope_MsgType HISTORY_RESPONSE =
       ServerEnvelope_MsgType._(21, _omitEnumNames ? '' : 'HISTORY_RESPONSE');
+  static const ServerEnvelope_MsgType STICKER_PACKS_RESPONSE =
+      ServerEnvelope_MsgType._(
+          22, _omitEnumNames ? '' : 'STICKER_PACKS_RESPONSE');
+  static const ServerEnvelope_MsgType STICKER_PACKS_UPDATED =
+      ServerEnvelope_MsgType._(
+          23, _omitEnumNames ? '' : 'STICKER_PACKS_UPDATED');
 
   static const $core.List<ServerEnvelope_MsgType> values =
       <ServerEnvelope_MsgType>[
@@ -352,10 +361,12 @@ class ServerEnvelope_MsgType extends $pb.ProtobufEnum {
     JOIN_AV_RESPONSE,
     SERVER_INFO_UPDATED,
     HISTORY_RESPONSE,
+    STICKER_PACKS_RESPONSE,
+    STICKER_PACKS_UPDATED,
   ];
 
   static final $core.List<ServerEnvelope_MsgType?> _byValue =
-      $pb.ProtobufEnum.$_initByValueList(values, 21);
+      $pb.ProtobufEnum.$_initByValueList(values, 23);
   static ServerEnvelope_MsgType? valueOf($core.int value) =>
       value < 0 || value >= _byValue.length ? null : _byValue[value];
 

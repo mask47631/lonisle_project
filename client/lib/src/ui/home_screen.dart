@@ -30,6 +30,7 @@ import 'device_screen.dart';
 import 'media_viewer.dart';
 import 'role_manager.dart';
 import 'search_screen.dart';
+import 'sticker_panel.dart';
 import 'settings_screen.dart';
 import 'voice_player.dart';
 import 'inline_voice_player.dart';
@@ -2456,9 +2457,20 @@ class _AttachmentPreviewState extends State<_AttachmentPreview> {
       if (!mounted) return;
       setState(() => _progress = -1);
       // 原始文件名优先；缺失时用缓存文件名（已按魔数补扩展名）
-      final defaultName = attachment.filename.isNotEmpty
+      var defaultName = attachment.filename.isNotEmpty
           ? attachment.filename
           : p.basename(path);
+      // 旧消息/引用发送（如表情）filename 可能无扩展名 → 优先用缓存文件名
+      // （按魔数嗅探过，如 .gif/.png），再按 mime 兜底
+      if (!defaultName.contains('.')) {
+        final base = p.basename(path);
+        if (base.contains('.')) {
+          defaultName = base;
+        } else {
+          final ext = _extForMime(attachment.mime);
+          if (ext.isNotEmpty) defaultName = '$defaultName.$ext';
+        }
+      }
       // iOS/Android：file_picker 必须传 bytes（系统 SAF/文档选择器直接写内容）；
       // macOS/桌面：不支持 bytes，返回目标路径后自行复制
       String? savePath;
@@ -2488,6 +2500,23 @@ class _AttachmentPreviewState extends State<_AttachmentPreview> {
         );
       }
     }
+  }
+
+  /// 保存附件：按 mime 补扩展名（下载文件名兜底，F-MEDIA-10）
+  static String _extForMime(String mime) {
+    final m = mime.toLowerCase();
+    if (m.contains('gif')) return 'gif';
+    if (m.contains('png')) return 'png';
+    if (m.contains('jpeg') || m.contains('jpg')) return 'jpg';
+    if (m.contains('webp')) return 'webp';
+    if (m.contains('mp4')) return 'mp4';
+    if (m.contains('webm')) return 'webm';
+    if (m.contains('mpeg')) return 'mp3';
+    if (m.contains('wav')) return 'wav';
+    if (m.contains('ogg')) return 'ogg';
+    if (m.contains('pdf')) return 'pdf';
+    if (m.contains('zip')) return 'zip';
+    return '';
   }
 
   /// 点击：流式下载（进度）→ 打开查看器
@@ -2946,6 +2975,38 @@ class _MessageInputState extends State<_MessageInput> {
     }
   }
 
+  /// 打开表情包面板（F-STICKER：底部弹层；emoji 插入输入框，图片表情直接发送）
+  void _openStickerPanel() {
+    final sc = AppState.instance.activeServer;
+    if (sc == null) return;
+    showStickerPanel(
+      context,
+      sc: sc,
+      onEmoji: (emoji) {
+        final ctrl = widget.controller;
+        final text = ctrl.text;
+        final sel = ctrl.selection;
+        final start = sel.isValid ? sel.start : text.length;
+        final end = sel.isValid ? sel.end : start;
+        final newText = text.replaceRange(start, end, emoji);
+        ctrl.text = newText;
+        ctrl.selection =
+            TextSelection.collapsed(offset: start + emoji.length);
+      },
+      onImage: (attRef) async {
+        try {
+          await sc.sendStickerImage(attRef);
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('发送失败：$e')),
+            );
+          }
+        }
+      },
+    );
+  }
+
   /// 选择并发送附件（F-MEDIA-1）
   Future<void> _pickAndSend(String kind) async {
     try {
@@ -3240,7 +3301,7 @@ class _MessageInputState extends State<_MessageInput> {
   Widget build(BuildContext context) {
     final reply = widget.replyTo;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       color: LonIsleTheme.bg2,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -3350,53 +3411,97 @@ class _MessageInputState extends State<_MessageInput> {
               ),
             )
           else
-            Row(
+            Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // 附件按钮（F-MEDIA-1：图片/视频/音频/文件发送）
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.attach_file,
-                      color: LonIsleTheme.textDim),
-                  onSelected: (v) => _pickAndSend(v),
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                        value: 'image', child: Text('发送图片')),
-                    const PopupMenuItem(
-                        value: 'video', child: Text('发送视频')),
-                    const PopupMenuItem(
-                        value: 'audio', child: Text('发送音频')),
-                    const PopupMenuItem(
-                        value: 'file', child: Text('发送文件')),
+                // 工具条（输入框上方）：表情 / 图片 / 视频 / 音频 / 文件 / 语音
+                Row(
+                  children: [
+                    // 表情包（F-STICKER：底部弹层，本地 + 服务器）
+                    IconButton(
+                      onPressed: _openStickerPanel,
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.emoji_emotions_outlined,
+                          size: 22, color: LonIsleTheme.textDim),
+                      tooltip: '表情',
+                    ),
+                    // 附件：图片/视频/音频/文件（F-MEDIA-1，直接按钮）
+                    IconButton(
+                      onPressed: () => _pickAndSend('image'),
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.image_outlined,
+                          size: 22, color: LonIsleTheme.textDim),
+                      tooltip: '发送图片',
+                    ),
+                    IconButton(
+                      onPressed: () => _pickAndSend('video'),
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.video_library_outlined,
+                          size: 22, color: LonIsleTheme.textDim),
+                      tooltip: '发送视频',
+                    ),
+                    IconButton(
+                      onPressed: () => _pickAndSend('audio'),
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.audio_file_outlined,
+                          size: 22, color: LonIsleTheme.textDim),
+                      tooltip: '发送音频',
+                    ),
+                    IconButton(
+                      onPressed: () => _pickAndSend('file'),
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.insert_drive_file_outlined,
+                          size: 22, color: LonIsleTheme.textDim),
+                      tooltip: '发送文件',
+                    ),
+                    // 语音消息
+                    IconButton(
+                      onPressed: _startRecording,
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.mic_none,
+                          size: 22, color: LonIsleTheme.textDim),
+                      tooltip: '语音消息',
+                    ),
+                    const Spacer(),
                   ],
                 ),
-                Expanded(
-                  child: TextField(
-                    controller: widget.controller,
-                    onSubmitted: (_) => widget.onSend(),
-                    style: const TextStyle(color: LonIsleTheme.textWhite),
-                    decoration: InputDecoration(
-                      hintText: '发送消息…（@ 提及成员）',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                // 输入行：输入框（多行自动换行）+ 发送
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: widget.controller,
+                        onSubmitted: (_) => widget.onSend(),
+                        style:
+                            const TextStyle(color: LonIsleTheme.textWhite),
+                        minLines: 1,
+                        maxLines: 4,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: '发送消息…（@ 提及成员）',
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                // 语音消息（按住说话过重，点击开始/结束即可）
-                IconButton(
-                  onPressed: _startRecording,
-                  icon: const Icon(Icons.mic_none,
-                      color: LonIsleTheme.textDim),
-                  tooltip: '语音消息',
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  onPressed: widget.onSend,
-                  style: IconButton.styleFrom(
-                    backgroundColor: LonIsleTheme.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                  icon: const Icon(Icons.send),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      onPressed: widget.onSend,
+                      visualDensity: VisualDensity.compact,
+                      style: IconButton.styleFrom(
+                        backgroundColor: LonIsleTheme.primary,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(40, 40),
+                      ),
+                      icon: const Icon(Icons.send, size: 20),
+                    ),
+                  ],
                 ),
               ],
             ),

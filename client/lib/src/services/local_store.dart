@@ -20,7 +20,7 @@ class LocalStore {
   static final LocalStore instance = LocalStore._();
 
   static const _dbName = 'lonisle_client.db';
-  static const _dbVersion = 11;
+  static const _dbVersion = 12;
 
   Database? _db;
 
@@ -357,6 +357,28 @@ class LocalStore {
           await db.execute(
               "ALTER TABLE messages ADD COLUMN failed INTEGER NOT NULL DEFAULT 0");
         }
+        if (oldVersion < 12) {
+          // 表情包（F-STICKER 本地包：客户端管理，新表情默认最前）
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS sticker_packs_local (
+              id   TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              icon TEXT NOT NULL DEFAULT '',
+              sort INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS stickers_local (
+              id      TEXT PRIMARY KEY,
+              pack_id TEXT NOT NULL,
+              type    TEXT NOT NULL,
+              content TEXT NOT NULL,
+              sort    INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+          await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_stickers_local_pack ON stickers_local (pack_id)');
+        }
       },
     );
   }
@@ -631,5 +653,149 @@ class LocalStore {
       LIMIT 100
     ''', [query]);
     return rows.map(ChatMessage.fromRow).toList();
+  }
+}
+
+/// 本地表情（F-STICKER 本地包）
+class LocalSticker {
+  final String id;
+  final String packId;
+  final String type; // emoji | image
+  final String content;
+  final int sort;
+
+  LocalSticker({
+    required this.id,
+    required this.packId,
+    required this.type,
+    required this.content,
+    required this.sort,
+  });
+
+  Map<String, Object?> toRow() => {
+        'id': id,
+        'pack_id': packId,
+        'type': type,
+        'content': content,
+        'sort': sort,
+      };
+
+  factory LocalSticker.fromRow(Map<String, Object?> r) => LocalSticker(
+        id: r['id'] as String,
+        packId: r['pack_id'] as String,
+        type: r['type'] as String,
+        content: r['content'] as String,
+        sort: r['sort'] as int,
+      );
+}
+
+/// 本地表情包（含表情列表，按 sort 升序）
+class LocalStickerPack {
+  final String id;
+  final String name;
+  final String icon;
+  final int sort;
+  final List<LocalSticker> stickers;
+
+  LocalStickerPack({
+    required this.id,
+    required this.name,
+    required this.icon,
+    required this.sort,
+    required this.stickers,
+  });
+}
+
+extension LocalStoreStickers on LocalStore {
+  /// 列出全部本地表情包（含表情，按 sort 升序）。
+  Future<List<LocalStickerPack>> listLocalStickerPacks() async {
+    final d = await db;
+    final packs = await d.query('sticker_packs_local',
+        orderBy: 'sort ASC, id ASC');
+    final result = <LocalStickerPack>[];
+    for (final p in packs) {
+      final packId = p['id'] as String;
+      final stickers = await d.query('stickers_local',
+          where: 'pack_id = ?', whereArgs: [packId], orderBy: 'sort ASC, id ASC');
+      result.add(LocalStickerPack(
+        id: packId,
+        name: p['name'] as String,
+        icon: p['icon'] as String? ?? '',
+        sort: p['sort'] as int,
+        stickers: stickers.map(LocalSticker.fromRow).toList(),
+      ));
+    }
+    return result;
+  }
+
+  /// 保存本地表情包（id 空=新建，新包排到末尾；更新保留原 sort）。
+  Future<String> saveLocalStickerPack({
+    required String id,
+    required String name,
+    required String icon,
+  }) async {
+    final d = await db;
+    if (id.isEmpty) {
+      final newId = 'local-${DateTime.now().microsecondsSinceEpoch}';
+      final max = await d.rawQuery('SELECT COALESCE(MAX(sort), -1) + 1 AS s FROM sticker_packs_local');
+      final sort = (max.first['s'] as int?) ?? 0;
+      await d.insert('sticker_packs_local', {
+        'id': newId,
+        'name': name,
+        'icon': icon,
+        'sort': sort,
+      });
+      return newId;
+    }
+    await d.update('sticker_packs_local', {'name': name, 'icon': icon},
+        where: 'id = ?', whereArgs: [id]);
+    return id;
+  }
+
+  /// 删除本地表情包（连带表情）。
+  Future<void> deleteLocalStickerPack(String id) async {
+    final d = await db;
+    await d.delete('stickers_local', where: 'pack_id = ?', whereArgs: [id]);
+    await d.delete('sticker_packs_local', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// 新增本地表情（新表情默认最前：sort = 当前最小 - 1）。
+  Future<void> addLocalSticker({
+    required String packId,
+    required String type,
+    required String content,
+  }) async {
+    final d = await db;
+    final min = await d.rawQuery(
+        'SELECT COALESCE(MIN(sort), 0) - 1 AS s FROM stickers_local WHERE pack_id = ?', [packId]);
+    final sort = (min.first['s'] as int?) ?? -1;
+    await d.insert('stickers_local', {
+      'id': 'st-${DateTime.now().microsecondsSinceEpoch}',
+      'pack_id': packId,
+      'type': type,
+      'content': content,
+      'sort': sort,
+    });
+  }
+
+  /// 删除本地表情。
+  Future<void> deleteLocalSticker(String id) async {
+    final d = await db;
+    await d.delete('stickers_local', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// 批量更新本地排序（包排序：ids 全量；表情排序：传 packId + ids 全量）。
+  Future<void> reorderLocal(
+      {String? packId, required List<String> ids}) async {
+    final d = await db;
+    for (var i = 0; i < ids.length; i++) {
+      if (packId != null) {
+        await d.update('stickers_local', {'sort': i},
+            where: 'id = ? AND pack_id = ?', whereArgs: [ids[i], packId]);
+      } else {
+        await d.update('sticker_packs_local', {'sort': i},
+            where: 'id = ?', whereArgs: [ids[i]]);
+      }
+    }
   }
 }

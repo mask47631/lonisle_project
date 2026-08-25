@@ -26,6 +26,20 @@ class ServerConnection extends ChangeNotifier {
   List<ChatMessage> messages = [];
   List<pb.MemberInfo> members = [];
   List<pb.TopicInfo> topics = [];
+
+  /// 服务器表情包（F-STICKER：管理员管理，成员只读；变更实时推送）
+  List<pb.StickerPack> serverStickerPacks = [];
+
+  /// 拉取服务器表情包（join 成功后调用一次；之后管理端变更会实时推送）
+  Future<void> loadServerStickerPacks() async {
+    try {
+      final resp = await connection.listStickerPacks();
+      serverStickerPacks = resp.packs;
+      notifyListeners();
+    } catch (_) {
+      // 拉取失败静默（下次变更推送/重新连接时再同步）
+    }
+  }
   bool isOwner = false;
   bool isAdmin = false;
 
@@ -78,6 +92,18 @@ class ServerConnection extends ChangeNotifier {
 
     connection.broadcastStream.listen(_onBroadcast);
     connection.notifyStream.listen((env) async {
+      // 表情包变更推送（F-STICKER：管理员管理页改动后实时刷新）
+      if (env.type == pb.ServerEnvelope_MsgType.STICKER_PACKS_UPDATED &&
+          env.payload.isNotEmpty) {
+        try {
+          final resp = pb.StickerPackListResponse.fromBuffer(env.payload);
+          serverStickerPacks = resp.packs;
+          notifyListeners();
+        } catch (e) {
+          debugPrint('[StickerPacksUpdated] 解析失败: $e');
+        }
+        return;
+      }
       // 服务器资料变更（名称/图标等，F-PERM-2）：实时刷新，无需重连
       if (env.type == pb.ServerEnvelope_MsgType.SERVER_INFO_UPDATED &&
           env.payload.isNotEmpty) {
@@ -149,6 +175,8 @@ class ServerConnection extends ChangeNotifier {
     );
     isOwner = join.isOwner;
     topics = join.topics;
+    // 表情包：join 后拉取一次（管理端变更会实时推送）
+    unawaited(loadServerStickerPacks());
     // 同步服务器最新名称/图标（join 响应的 ServerInfo）
     if (connection.serverName.isNotEmpty) {
       serverName = connection.serverName;
@@ -624,8 +652,7 @@ class ServerConnection extends ChangeNotifier {
     int height = 0,
     Uint8List? thumbnail,
     void Function()? onUpload,
-  }) async {
-    final id = await IdentityService.instance.loadIdentity();
+  }) async {    final id = await IdentityService.instance.loadIdentity();
     if (id == null) return;
     final msgId = 'm-${DateTime.now().microsecondsSinceEpoch}';
     try {
@@ -647,6 +674,18 @@ class ServerConnection extends ChangeNotifier {
       // 失败提示由调用方 UI 处理
       rethrow;
     }
+  }
+
+  /// 发送图片表情（F-STICKER：表情包内图片已存服务器，直接引用附件发送，不重复上传）
+  Future<void> sendStickerImage(String attRef) async {
+    final attId = attRef.replaceFirst('att:', '');
+    if (attId.isEmpty) return;
+    final att = pb.Attachment()
+      ..attachmentId = attId
+      ..kind = 'image'
+      ..filename = 'sticker'
+      ..mime = 'image/*';
+    await connection.sendAttachment(currentTopicId, '', att);
   }
 
   /// 发送 E2EE 加密消息给话题内某成员（M6）：

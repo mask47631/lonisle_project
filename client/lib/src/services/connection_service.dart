@@ -239,11 +239,12 @@ class ConnectionService {
       return;
     }
 
-    // 推送通知（审批结果/成员变更/话题变更/服务器资料变更）分发
+    // 推送通知（审批结果/成员变更/话题变更/服务器资料变更/表情包变更）分发
     if (env.type == pb.ServerEnvelope_MsgType.JOIN_REQUEST_UPDATED ||
         env.type == pb.ServerEnvelope_MsgType.MEMBER_UPDATED ||
         env.type == pb.ServerEnvelope_MsgType.TOPIC_UPDATED ||
-        env.type == pb.ServerEnvelope_MsgType.SERVER_INFO_UPDATED) {
+        env.type == pb.ServerEnvelope_MsgType.SERVER_INFO_UPDATED ||
+        env.type == pb.ServerEnvelope_MsgType.STICKER_PACKS_UPDATED) {
       if (!_notifyController.isClosed) _notifyController.add(env);
       return;
     }
@@ -569,6 +570,15 @@ class ConnectionService {
       req.writeToBuffer(),
     );
     return pb.HistoryResponse.fromBuffer(resp.payload);
+  }
+
+  /// 拉取服务器表情包（F-STICKER：join 后调用，管理端变更后服务器会推送更新）
+  Future<pb.StickerPackListResponse> listStickerPacks() async {
+    final resp = await _request(
+      pb.ClientEnvelope_MsgType.STICKER_PACKS_LIST,
+      Uint8List(0),
+    );
+    return pb.StickerPackListResponse.fromBuffer(resp.payload);
   }
 
   /// 成员列表

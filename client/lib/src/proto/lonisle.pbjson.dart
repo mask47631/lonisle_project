@@ -861,6 +861,79 @@ final $typed_data.Uint8List historyResponseDescriptor = $convert.base64Decode(
     'MYAiADKAsyGS5sb25pc2xlLkJyb2FkY2FzdE1lc3NhZ2VSCG1lc3NhZ2VzEhkKCGhhc19tb3Jl'
     'GAMgASgIUgdoYXNNb3Jl');
 
+@$core.Deprecated('Use stickerDescriptor instead')
+const Sticker$json = {
+  '1': 'Sticker',
+  '2': [
+    {'1': 'id', '3': 1, '4': 1, '5': 9, '10': 'id'},
+    {'1': 'pack_id', '3': 2, '4': 1, '5': 9, '10': 'packId'},
+    {'1': 'type', '3': 3, '4': 1, '5': 9, '10': 'type'},
+    {'1': 'content', '3': 4, '4': 1, '5': 9, '10': 'content'},
+    {'1': 'sort', '3': 5, '4': 1, '5': 5, '10': 'sort'},
+  ],
+};
+
+/// Descriptor for `Sticker`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List stickerDescriptor = $convert.base64Decode(
+    'CgdTdGlja2VyEg4KAmlkGAEgASgJUgJpZBIXCgdwYWNrX2lkGAIgASgJUgZwYWNrSWQSEgoEdH'
+    'lwZRgDIAEoCVIEdHlwZRIYCgdjb250ZW50GAQgASgJUgdjb250ZW50EhIKBHNvcnQYBSABKAVS'
+    'BHNvcnQ=');
+
+@$core.Deprecated('Use stickerPackDescriptor instead')
+const StickerPack$json = {
+  '1': 'StickerPack',
+  '2': [
+    {'1': 'id', '3': 1, '4': 1, '5': 9, '10': 'id'},
+    {'1': 'name', '3': 2, '4': 1, '5': 9, '10': 'name'},
+    {'1': 'icon', '3': 3, '4': 1, '5': 9, '10': 'icon'},
+    {'1': 'sort', '3': 4, '4': 1, '5': 5, '10': 'sort'},
+    {
+      '1': 'stickers',
+      '3': 5,
+      '4': 3,
+      '5': 11,
+      '6': '.lonisle.Sticker',
+      '10': 'stickers'
+    },
+  ],
+};
+
+/// Descriptor for `StickerPack`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List stickerPackDescriptor = $convert.base64Decode(
+    'CgtTdGlja2VyUGFjaxIOCgJpZBgBIAEoCVICaWQSEgoEbmFtZRgCIAEoCVIEbmFtZRISCgRpY2'
+    '9uGAMgASgJUgRpY29uEhIKBHNvcnQYBCABKAVSBHNvcnQSLAoIc3RpY2tlcnMYBSADKAsyEC5s'
+    'b25pc2xlLlN0aWNrZXJSCHN0aWNrZXJz');
+
+@$core.Deprecated('Use stickerPackListRequestDescriptor instead')
+const StickerPackListRequest$json = {
+  '1': 'StickerPackListRequest',
+};
+
+/// Descriptor for `StickerPackListRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List stickerPackListRequestDescriptor =
+    $convert.base64Decode('ChZTdGlja2VyUGFja0xpc3RSZXF1ZXN0');
+
+@$core.Deprecated('Use stickerPackListResponseDescriptor instead')
+const StickerPackListResponse$json = {
+  '1': 'StickerPackListResponse',
+  '2': [
+    {
+      '1': 'packs',
+      '3': 1,
+      '4': 3,
+      '5': 11,
+      '6': '.lonisle.StickerPack',
+      '10': 'packs'
+    },
+  ],
+};
+
+/// Descriptor for `StickerPackListResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List stickerPackListResponseDescriptor =
+    $convert.base64Decode(
+        'ChdTdGlja2VyUGFja0xpc3RSZXNwb25zZRIqCgVwYWNrcxgBIAMoCzIULmxvbmlzbGUuU3RpY2'
+        'tlclBhY2tSBXBhY2tz');
+
 @$core.Deprecated('Use memberInfoDescriptor instead')
 const MemberInfo$json = {
   '1': 'MemberInfo',
@@ -1464,6 +1537,7 @@ const ClientEnvelope_MsgType$json = {
     {'1': 'MENTION_READ_LIST', '2': 36},
     {'1': 'JOIN_AV', '2': 37},
     {'1': 'HISTORY', '2': 38},
+    {'1': 'STICKER_PACKS_LIST', '2': 39},
   ],
 };
 
@@ -1471,7 +1545,7 @@ const ClientEnvelope_MsgType$json = {
 final $typed_data.Uint8List clientEnvelopeDescriptor = $convert.base64Decode(
     'Cg5DbGllbnRFbnZlbG9wZRIzCgR0eXBlGAEgASgOMh8ubG9uaXNsZS5DbGllbnRFbnZlbG9wZS'
     '5Nc2dUeXBlUgR0eXBlEh0KCnJlcXVlc3RfaWQYAiABKARSCXJlcXVlc3RJZBIYCgdwYXlsb2Fk'
-    'GAMgASgMUgdwYXlsb2FkItQFCgdNc2dUeXBlEgkKBUhFTExPEAASCAoESk9JThABEhAKDFNFTk'
+    'GAMgASgMUgdwYXlsb2FkIuwFCgdNc2dUeXBlEgkKBUhFTExPEAASCAoESk9JThABEhAKDFNFTk'
     'RfTUVTU0FHRRACEggKBFNZTkMQAxIQCgxMSVNUX01FTUJFUlMQBBIICgRQSU5HEAUSDwoLTElT'
     'VF9UT1BJQ1MQBhIQCgxDUkVBVEVfVE9QSUMQBxIQCgxVUERBVEVfVE9QSUMQCBIQCgxERUxFVE'
     'VfVE9QSUMQCRISCg5SRU9SREVSX1RPUElDUxAKEhYKEkxJU1RfSk9JTl9SRVFVRVNUUxALEhgK'
@@ -1484,7 +1558,7 @@ final $typed_data.Uint8List clientEnvelopeDescriptor = $convert.base64Decode(
     'UkVfS0VZUxAcEhIKDkZFVENIX1BSRV9LRVlTEB0SDwoLVVBTRVJUX1JPTEUQHhIPCgtERUxFVE'
     'VfUk9MRRAfEg4KCkxJU1RfUk9MRVMQIBIPCgtBU1NJR05fUk9MRRAhEhEKDVVOQVNTSUdOX1JP'
     'TEUQIhIVChFNQVJLX01FTlRJT05fUkVBRBAjEhUKEU1FTlRJT05fUkVBRF9MSVNUECQSCwoHSk'
-    '9JTl9BVhAlEgsKB0hJU1RPUlkQJg==');
+    '9JTl9BVhAlEgsKB0hJU1RPUlkQJhIWChJTVElDS0VSX1BBQ0tTX0xJU1QQJw==');
 
 @$core.Deprecated('Use serverEnvelopeDescriptor instead')
 const ServerEnvelope$json = {
@@ -1531,6 +1605,8 @@ const ServerEnvelope_MsgType$json = {
     {'1': 'JOIN_AV_RESPONSE', '2': 19},
     {'1': 'SERVER_INFO_UPDATED', '2': 20},
     {'1': 'HISTORY_RESPONSE', '2': 21},
+    {'1': 'STICKER_PACKS_RESPONSE', '2': 22},
+    {'1': 'STICKER_PACKS_UPDATED', '2': 23},
   ],
 };
 
@@ -1538,7 +1614,7 @@ const ServerEnvelope_MsgType$json = {
 final $typed_data.Uint8List serverEnvelopeDescriptor = $convert.base64Decode(
     'Cg5TZXJ2ZXJFbnZlbG9wZRIzCgR0eXBlGAEgASgOMh8ubG9uaXNsZS5TZXJ2ZXJFbnZlbG9wZS'
     '5Nc2dUeXBlUgR0eXBlEh0KCnJlcXVlc3RfaWQYAiABKARSCXJlcXVlc3RJZBIYCgdwYXlsb2Fk'
-    'GAMgASgMUgdwYXlsb2FkEhQKBWVycm9yGAQgASgJUgVlcnJvciLnAwoHTXNnVHlwZRISCg5IRU'
+    'GAMgASgMUgdwYXlsb2FkEhQKBWVycm9yGAQgASgJUgVlcnJvciKeBAoHTXNnVHlwZRISCg5IRU'
     'xMT19SRVNQT05TRRAAEhEKDUpPSU5fUkVTUE9OU0UQARIUChBTRU5EX01FU1NBR0VfQUNLEAIS'
     'DQoJQlJPQURDQVNUEAMSEQoNU1lOQ19SRVNQT05TRRAEEhgKFE1FTUJFUl9MSVNUX1JFU1BPTl'
     'NFEAUSCAoEUE9ORxAGEgkKBUVSUk9SEAcSFwoTVE9QSUNfTElTVF9SRVNQT05TRRAIEh4KGkpP'
@@ -1547,4 +1623,5 @@ final $typed_data.Uint8List serverEnvelopeDescriptor = $convert.base64Decode(
     'SVNUX1JFU1BPTlNFEA4SGAoUTUVNQkVSX0RFVklDRV9DSEFOR0UQDxIbChdQUkVfS0VZX0JVTk'
     'RMRV9SRVNQT05TRRAQEhYKElJPTEVfTElTVF9SRVNQT05TRRAREh4KGk1FTlRJT05fUkVBRF9M'
     'SVNUX1JFU1BPTlNFEBISFAoQSk9JTl9BVl9SRVNQT05TRRATEhcKE1NFUlZFUl9JTkZPX1VQRE'
-    'FURUQQFBIUChBISVNUT1JZX1JFU1BPTlNFEBU=');
+    'FURUQQFBIUChBISVNUT1JZX1JFU1BPTlNFEBUSGgoWU1RJQ0tFUl9QQUNLU19SRVNQT05TRRAW'
+    'EhkKFVNUSUNLRVJfUEFDS1NfVVBEQVRFRBAX');

@@ -3159,6 +3159,296 @@ class HistoryResponse extends $pb.GeneratedMessage {
   void clearHasMore() => $_clearField(3);
 }
 
+/// 表情包（服务器包：管理员管理，成员只读；本地包仅客户端本地存储，不走协议）
+class Sticker extends $pb.GeneratedMessage {
+  factory Sticker({
+    $core.String? id,
+    $core.String? packId,
+    $core.String? type,
+    $core.String? content,
+    $core.int? sort,
+  }) {
+    final result = create();
+    if (id != null) result.id = id;
+    if (packId != null) result.packId = packId;
+    if (type != null) result.type = type;
+    if (content != null) result.content = content;
+    if (sort != null) result.sort = sort;
+    return result;
+  }
+
+  Sticker._();
+
+  factory Sticker.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory Sticker.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'Sticker',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'lonisle'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'id')
+    ..aOS(2, _omitFieldNames ? '' : 'packId')
+    ..aOS(3, _omitFieldNames ? '' : 'type')
+    ..aOS(4, _omitFieldNames ? '' : 'content')
+    ..aI(5, _omitFieldNames ? '' : 'sort')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  Sticker clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  Sticker copyWith(void Function(Sticker) updates) =>
+      super.copyWith((message) => updates(message as Sticker)) as Sticker;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static Sticker create() => Sticker._();
+  @$core.override
+  Sticker createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static Sticker getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<Sticker>(create);
+  static Sticker? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get id => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set id($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get packId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set packId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasPackId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearPackId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get type => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set type($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasType() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearType() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get content => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set content($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasContent() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearContent() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.int get sort => $_getIZ(4);
+  @$pb.TagNumber(5)
+  set sort($core.int value) => $_setSignedInt32(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasSort() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearSort() => $_clearField(5);
+}
+
+class StickerPack extends $pb.GeneratedMessage {
+  factory StickerPack({
+    $core.String? id,
+    $core.String? name,
+    $core.String? icon,
+    $core.int? sort,
+    $core.Iterable<Sticker>? stickers,
+  }) {
+    final result = create();
+    if (id != null) result.id = id;
+    if (name != null) result.name = name;
+    if (icon != null) result.icon = icon;
+    if (sort != null) result.sort = sort;
+    if (stickers != null) result.stickers.addAll(stickers);
+    return result;
+  }
+
+  StickerPack._();
+
+  factory StickerPack.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory StickerPack.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'StickerPack',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'lonisle'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'id')
+    ..aOS(2, _omitFieldNames ? '' : 'name')
+    ..aOS(3, _omitFieldNames ? '' : 'icon')
+    ..aI(4, _omitFieldNames ? '' : 'sort')
+    ..pPM<Sticker>(5, _omitFieldNames ? '' : 'stickers',
+        subBuilder: Sticker.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StickerPack clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StickerPack copyWith(void Function(StickerPack) updates) =>
+      super.copyWith((message) => updates(message as StickerPack))
+          as StickerPack;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static StickerPack create() => StickerPack._();
+  @$core.override
+  StickerPack createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static StickerPack getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<StickerPack>(create);
+  static StickerPack? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get id => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set id($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get name => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set name($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasName() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearName() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get icon => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set icon($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasIcon() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearIcon() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.int get sort => $_getIZ(3);
+  @$pb.TagNumber(4)
+  set sort($core.int value) => $_setSignedInt32(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasSort() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearSort() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $pb.PbList<Sticker> get stickers => $_getList(4);
+}
+
+/// 客户端 → 服务器：拉取服务器表情包（join 后调用一次，payload 空）
+class StickerPackListRequest extends $pb.GeneratedMessage {
+  factory StickerPackListRequest() => create();
+
+  StickerPackListRequest._();
+
+  factory StickerPackListRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory StickerPackListRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'StickerPackListRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'lonisle'),
+      createEmptyInstance: create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StickerPackListRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StickerPackListRequest copyWith(
+          void Function(StickerPackListRequest) updates) =>
+      super.copyWith((message) => updates(message as StickerPackListRequest))
+          as StickerPackListRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static StickerPackListRequest create() => StickerPackListRequest._();
+  @$core.override
+  StickerPackListRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static StickerPackListRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<StickerPackListRequest>(create);
+  static StickerPackListRequest? _defaultInstance;
+}
+
+/// 服务器 → 客户端：表情包列表响应
+class StickerPackListResponse extends $pb.GeneratedMessage {
+  factory StickerPackListResponse({
+    $core.Iterable<StickerPack>? packs,
+  }) {
+    final result = create();
+    if (packs != null) result.packs.addAll(packs);
+    return result;
+  }
+
+  StickerPackListResponse._();
+
+  factory StickerPackListResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory StickerPackListResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'StickerPackListResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'lonisle'),
+      createEmptyInstance: create)
+    ..pPM<StickerPack>(1, _omitFieldNames ? '' : 'packs',
+        subBuilder: StickerPack.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StickerPackListResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StickerPackListResponse copyWith(
+          void Function(StickerPackListResponse) updates) =>
+      super.copyWith((message) => updates(message as StickerPackListResponse))
+          as StickerPackListResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static StickerPackListResponse create() => StickerPackListResponse._();
+  @$core.override
+  StickerPackListResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static StickerPackListResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<StickerPackListResponse>(create);
+  static StickerPackListResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<StickerPack> get packs => $_getList(0);
+}
+
 class MemberInfo extends $pb.GeneratedMessage {
   factory MemberInfo({
     $core.String? userId,
