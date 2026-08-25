@@ -130,6 +130,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/clear/range", post(api_clear_range))
         .route("/api/clear/user", post(api_clear_user))
         .route("/api/clear/all", post(api_clear_all))
+        // 表情包管理（F-STICKER：管理员增删改排序，成员只读）
+        .route("/api/sticker-packs", get(api_list_sticker_packs))
+        .route("/api/sticker-packs/save", post(api_save_sticker_pack))
+        .route("/api/sticker-packs/delete", post(api_delete_sticker_pack))
+        .route("/api/sticker-packs/reorder", post(api_reorder_sticker_packs))
+        .route("/api/stickers/save", post(api_save_sticker))
+        .route("/api/stickers/delete", post(api_delete_sticker))
+        .route("/api/stickers/reorder", post(api_reorder_stickers))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             admin_auth,
@@ -1363,6 +1371,168 @@ async fn cleanup_attachments_for_messages(state: &Arc<AppState>, records: &[crat
             }
         }
     }
+}
+
+// ---- 表情包管理 API（F-STICKER：管理员增删改排序，成员只读） ----
+
+#[derive(serde::Deserialize)]
+struct StickerPackBody {
+    id: String,
+    name: String,
+    icon: String,
+}
+
+#[derive(serde::Deserialize)]
+struct StickerBody {
+    id: String,
+    pack_id: String,
+    r#type: String,
+    content: String,
+}
+
+#[derive(serde::Deserialize)]
+struct StickerReorderBody {
+    pack_id: String,
+    ids: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct IdsBody {
+    ids: Vec<String>,
+}
+
+fn sticker_packs_json(packs: Vec<crate::storage::StickerPackRecord>) -> serde_json::Value {
+    serde_json::json!({
+        "packs": packs.into_iter().map(|p| serde_json::json!({
+            "id": p.id,
+            "name": p.name,
+            "icon": p.icon,
+            "sort": p.sort,
+            "stickers": p.stickers.into_iter().map(|s| serde_json::json!({
+                "id": s.id,
+                "pack_id": s.pack_id,
+                "type": s.r#type,
+                "content": s.content,
+                "sort": s.sort,
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+async fn api_list_sticker_packs(State(state): State<Arc<AppState>>) -> Html<String> {
+    match state.storage.list_sticker_packs().await {
+        Ok(packs) => Html(sticker_packs_json(packs).to_string()),
+        Err(e) => json_err(&e.to_string()),
+    }
+}
+
+async fn api_save_sticker_pack(
+    State(state): State<Arc<AppState>>,
+    axum::Json(body): axum::Json<StickerPackBody>,
+) -> Html<String> {
+    let id = if body.id.is_empty() {
+        unique_id()
+    } else {
+        body.id
+    };
+    let sort = state
+        .storage
+        .list_sticker_packs()
+        .await
+        .map(|p| p.len() as i32)
+        .unwrap_or(0);
+    let result = state
+        .storage
+        .upsert_sticker_pack(&id, &body.name, &body.icon, sort)
+        .await;
+    if result.is_ok() {
+        crate::ws::broadcast_sticker_packs(&state).await;
+    }
+    json_result(result)
+}
+
+async fn api_delete_sticker_pack(
+    State(state): State<Arc<AppState>>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Html<String> {
+    let id = body.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let result = state.storage.delete_sticker_pack(id).await;
+    if result.is_ok() {
+        crate::ws::broadcast_sticker_packs(&state).await;
+    }
+    json_result(result)
+}
+
+async fn api_reorder_sticker_packs(
+    State(state): State<Arc<AppState>>,
+    axum::Json(body): axum::Json<IdsBody>,
+) -> Html<String> {
+    let order: Vec<(String, i32)> = body.ids.iter().enumerate().map(|(i, id)| (id.clone(), i as i32)).collect();
+    let result = state.storage.reorder_stickers(None, &order).await;
+    if result.is_ok() {
+        crate::ws::broadcast_sticker_packs(&state).await;
+    }
+    json_result(result)
+}
+
+async fn api_save_sticker(
+    State(state): State<Arc<AppState>>,
+    axum::Json(body): axum::Json<StickerBody>,
+) -> Html<String> {
+    let is_new = body.id.is_empty();
+    let id = if is_new { unique_id() } else { body.id };
+    let sort = if is_new {
+        // 新表情追加到包尾（sort = 当前最大 + 1）
+        state
+            .storage
+            .list_sticker_packs()
+            .await
+            .ok()
+            .and_then(|packs| {
+                packs
+                    .into_iter()
+                    .find(|p| p.id == body.pack_id)
+                    .map(|p| p.stickers.len() as i32)
+            })
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let result = state
+        .storage
+        .upsert_sticker(&id, &body.pack_id, &body.r#type, &body.content, sort)
+        .await;
+    if result.is_ok() {
+        crate::ws::broadcast_sticker_packs(&state).await;
+    }
+    json_result(result)
+}
+
+async fn api_delete_sticker(
+    State(state): State<Arc<AppState>>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Html<String> {
+    let id = body.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let result = state.storage.delete_sticker(id).await;
+    if result.is_ok() {
+        crate::ws::broadcast_sticker_packs(&state).await;
+    }
+    json_result(result)
+}
+
+async fn api_reorder_stickers(
+    State(state): State<Arc<AppState>>,
+    axum::Json(body): axum::Json<StickerReorderBody>,
+) -> Html<String> {
+    let order: Vec<(String, i32)> = body.ids.iter().enumerate().map(|(i, id)| (id.clone(), i as i32)).collect();
+    let result = state
+        .storage
+        .reorder_stickers(Some(&body.pack_id), &order)
+        .await;
+    if result.is_ok() {
+        crate::ws::broadcast_sticker_packs(&state).await;
+    }
+    json_result(result)
 }
 
 // ---- 辅助 ----

@@ -99,7 +99,12 @@ async fn upload(
     let content_hash = hex::encode(sha2::Sha256::digest(&data));
     let size = data.len() as u64;
     let storage_name = format!("{}-{}", content_hash, size);
-    let (width, height, duration) = (0u32, 0u32, 0u32); // M5 简化：不解析媒体尺寸
+    // 解析图片尺寸（PNG/GIF/JPEG 读文件头，服务端统一解析，
+    // 保证表情等引用发送时消息流按真实比例展示）
+    let (width, height, duration) = match parse_image_dimensions(&data) {
+        Some((w, h)) => (w, h, 0u32),
+        None => (0u32, 0u32, 0u32),
+    };
 
     let dir = std::path::Path::new(&state_dir(&state)).join(ATTACHMENTS_DIR);
     std::fs::create_dir_all(&dir).ok();
@@ -221,6 +226,52 @@ async fn delete(
 }
 
 // ---- 辅助 ----
+
+/// 解析图片尺寸（PNG/GIF/JPEG，只读文件头不解码全图）。
+/// PNG：签名 + IHDR；GIF：GIF87a/89a + 宽高小端；JPEG：扫描 SOF marker。
+fn parse_image_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+    // PNG：8 字节签名 + IHDR chunk（宽高 4 字节大端，位于偏移 16-24）
+    if data.len() >= 24 && &data[0..8] == b"\x89PNG\r\n\x1a\n" && &data[12..16] == b"IHDR" {
+        let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
+        let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+        return Some((w, h));
+    }
+    // GIF：GIF87a / GIF89a + 宽高 2 字节小端
+    if data.len() >= 10 && (&data[0..6] == b"GIF87a" || &data[0..6] == b"GIF89a") {
+        let w = u16::from_le_bytes([data[6], data[7]]) as u32;
+        let h = u16::from_le_bytes([data[8], data[9]]) as u32;
+        return Some((w, h));
+    }
+    // JPEG：SOI + 扫描段，找 SOF0/SOF2（宽高位于 marker 后第 5-8 字节）
+    if data.len() > 4 && data[0] == 0xFF && data[1] == 0xD8 {
+        let mut i = 2usize;
+        while i + 9 < data.len() {
+            if data[i] != 0xFF {
+                i += 1;
+                continue;
+            }
+            let marker = data[i + 1];
+            if marker == 0xD8 || (0xD0..=0xD7).contains(&marker) || marker == 0x01 {
+                i += 2;
+                continue;
+            }
+            let seg_len = u16::from_be_bytes([data[i + 2], data[i + 3]]) as usize;
+            if (0xC0..=0xCF).contains(&marker)
+                && marker != 0xC4
+                && marker != 0xC8
+                && marker != 0xCC
+            {
+                if i + 9 < data.len() {
+                    let h = u16::from_be_bytes([data[i + 5], data[i + 6]]) as u32;
+                    let w = u16::from_be_bytes([data[i + 7], data[i + 8]]) as u32;
+                    return Some((w, h));
+                }
+            }
+            i += 2 + seg_len;
+        }
+    }
+    None
+}
 
 pub(crate) fn state_dir(state: &Arc<AppState>) -> String {
     if state.data_dir.is_empty() {

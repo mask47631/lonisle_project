@@ -10,8 +10,8 @@ use lonisle_core::device::{verify_device_cert, verify_device_signature, DeviceKe
 use lonisle_core::proto::{
     self, client_envelope::MsgType as ClientMsgType, server_envelope::MsgType as ServerMsgType,
     ClientEnvelope, Hello, HelloResponse, HistoryRequest, HistoryResponse, JoinRequest,
-    JoinResponse, MemberInfo, SendMessage, SendMessageAck, ServerEnvelope, SyncRequest,
-    SyncResponse,
+    JoinResponse, MemberInfo, SendMessage, SendMessageAck, ServerEnvelope, StickerPack,
+    StickerPackListResponse, Sticker, SyncRequest, SyncResponse,
 };
 use lonisle_core::signature::{
     hello_signing_payload, verify_delete_message, verify_edit_message, verify_send_message,
@@ -181,6 +181,7 @@ async fn handle_client_message(
         }
         ClientMsgType::Sync => handle_sync(state, payload).await?,
         ClientMsgType::History => handle_history(state, payload).await?,
+        ClientMsgType::StickerPacksList => handle_sticker_packs(state).await?,
         ClientMsgType::ListMembers => handle_list_members(state).await?,
         ClientMsgType::ListTopics => handle_list_topics(state).await?,
         ClientMsgType::CreateTopic => handle_create_topic(state, current_user, payload).await?,
@@ -897,6 +898,45 @@ async fn handle_send_message(
         serde_json::to_string(&mention_entries).unwrap_or_default()
     };
 
+    // 附件文件名补全：表情等"引用发送"（客户端仅传 attachment_id）可能不带扩展名，
+    // 用附件记录的真实文件名/mime/尺寸覆盖，避免接收方下载得到无后缀名文件、
+    // 消息流图片比例错误显示正方形（F-STICKER）
+    let mut attachment_json = String::new();
+    if let Some(c) = msg.content.as_ref() {
+        if let Some(att) = c.attachment.as_ref() {
+            let mut att = att.clone();
+            if !att.attachment_id.is_empty() {
+                if let Ok(Some(record)) =
+                    state.storage.get_attachment(&att.attachment_id).await
+                {
+                    let has_ext = att.filename.contains('.');
+                    if att.filename.is_empty()
+                        || (!has_ext && !record.filename.is_empty())
+                    {
+                        att.filename = record.filename.clone();
+                    }
+                    if att.mime.is_empty() || att.mime == "image/*" {
+                        att.mime = record.mime.clone();
+                    }
+                    // 尺寸/时长/大小补全（引用发送时客户端未知，靠记录补）
+                    if att.width == 0 && record.width > 0 {
+                        att.width = record.width;
+                    }
+                    if att.height == 0 && record.height > 0 {
+                        att.height = record.height;
+                    }
+                    if att.duration == 0 && record.duration > 0 {
+                        att.duration = record.duration;
+                    }
+                    if att.size == 0 {
+                        att.size = record.size;
+                    }
+                }
+            }
+            attachment_json = storage::attachment_to_json(&att);
+        }
+    }
+
     let stored = StoredMessage {
         seq: 0,
         topic_id: topic_id.clone(),
@@ -910,12 +950,7 @@ async fn handle_send_message(
         deleted: false,
         mentions: mentions_json.clone(),
         reply_to: msg.reply_to.clone(),
-        attachment_json: msg
-            .content
-            .as_ref()
-            .and_then(|c| c.attachment.as_ref())
-            .map(storage::attachment_to_json)
-            .unwrap_or_default(),
+        attachment_json,
     };
 
     // 落库分配序号（幂等去重）
@@ -938,7 +973,14 @@ async fn handle_send_message(
         Err(e) => return Err(anyhow::anyhow!("落库失败：{e}")),
     };
 
-    // 广播给所有在线成员
+    // 广播给所有在线成员（先用附件记录补全 attachment 字段，
+    // 修复历史消息 attachment_json 旧值/客户端 SendMessage 占位值问题，F-MEDIA-10）
+    let mut enriched_content = msg.content.clone();
+    enrich_attachment_from_record(
+        state,
+        enriched_content.as_mut().and_then(|c| c.attachment.as_mut()),
+    )
+    .await;
     let broadcast_msg = proto::BroadcastMessage {
         seq,
         topic_id: topic_id.clone(),
@@ -947,7 +989,7 @@ async fn handle_send_message(
         device_id: msg.device_id.clone(),
         author_name: stored.author_name.clone(),
         server_ts: stored.server_ts,
-        content: msg.content.clone(),
+        content: enriched_content,
         edited: false,
         deleted: false,
         mentions: mentions_json.clone(),
@@ -1056,8 +1098,12 @@ async fn handle_send_message(
 }
 
 /// StoredMessage → 广播消息（同步/历史翻页共用映射）
-fn stored_to_broadcast(m: StoredMessage) -> proto::BroadcastMessage {
-    proto::BroadcastMessage {
+/// `StoredMessage` → `BroadcastMessage`（async：用当前附件记录补全 attachment 字段）
+async fn stored_to_broadcast(
+    state: &Arc<AppState>,
+    m: StoredMessage,
+) -> proto::BroadcastMessage {
+    let mut bc = proto::BroadcastMessage {
         seq: m.seq,
         topic_id: m.topic_id,
         msg_id: m.msg_id,
@@ -1075,6 +1121,97 @@ fn stored_to_broadcast(m: StoredMessage) -> proto::BroadcastMessage {
         mentions: m.mentions,
         reactions: vec![],
         reply_to: m.reply_to,
+    };
+    // 用附件记录补全（修复历史消息 attachment_json 旧值/客户端 SendMessage 占位值问题）
+    enrich_attachment_from_record(state, bc.content.as_mut().and_then(|c| c.attachment.as_mut())).await;
+    bc
+}
+
+/// 广播/同步附件时，用 attachments 表当前记录补全 attachment 字段
+/// （修复历史消息 attachment_json 写入了占位值的旧问题，F-STICKER/F-MEDIA-10）
+async fn enrich_attachment_from_record(
+    state: &Arc<AppState>,
+    att: Option<&mut lonisle_core::proto::Attachment>,
+) {
+    let Some(att) = att else { return };
+    if att.attachment_id.is_empty() {
+        return;
+    }
+    let Ok(Some(record)) = state.storage.get_attachment(&att.attachment_id).await else {
+        return;
+    };
+    let has_ext = att.filename.contains('.');
+    if att.filename.is_empty() || (!has_ext && !record.filename.is_empty()) {
+        att.filename = record.filename.clone();
+    }
+    if att.mime.is_empty() || att.mime == "image/*" {
+        att.mime = record.mime.clone();
+    }
+    if att.width == 0 && record.width > 0 {
+        att.width = record.width;
+    }
+    if att.height == 0 && record.height > 0 {
+        att.height = record.height;
+    }
+    if att.size == 0 {
+        att.size = record.size;
+    }
+    if att.duration == 0 && record.duration > 0 {
+        att.duration = record.duration;
+    }
+}
+
+/// 表情包记录 → proto（包 + 表情，F-STICKER）
+fn sticker_packs_to_proto(
+    packs: Vec<crate::storage::StickerPackRecord>,
+) -> Vec<StickerPack> {
+    packs
+        .into_iter()
+        .map(|p| StickerPack {
+            id: p.id,
+            name: p.name,
+            icon: p.icon,
+            sort: p.sort,
+            stickers: p
+                .stickers
+                .into_iter()
+                .map(|s| Sticker {
+                    id: s.id,
+                    pack_id: s.pack_id,
+                    r#type: s.r#type,
+                    content: s.content,
+                    sort: s.sort,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// 拉取服务器表情包（join 后调用一次）
+async fn handle_sticker_packs(state: &Arc<AppState>) -> anyhow::Result<ServerEnvelope> {
+    let packs = state.storage.list_sticker_packs().await?;
+    let resp = StickerPackListResponse {
+        packs: sticker_packs_to_proto(packs),
+    };
+    Ok(ServerEnvelope {
+        r#type: ServerMsgType::StickerPacksResponse as i32,
+        request_id: 0,
+        payload: resp.encode_to_vec(),
+        error: String::new(),
+    })
+}
+
+/// 广播表情包变更（管理页增删改排序后调用，在线成员实时刷新）
+pub async fn broadcast_sticker_packs(state: &Arc<AppState>) {
+    if let Ok(packs) = state.storage.list_sticker_packs().await {
+        let resp = StickerPackListResponse {
+            packs: sticker_packs_to_proto(packs),
+        };
+        broadcast_simple(
+            state,
+            ServerMsgType::StickerPacksUpdated,
+            resp.encode_to_vec(),
+        );
     }
 }
 
@@ -1103,8 +1240,10 @@ async fn handle_history(
         .await?;
     let has_more = msgs.len() as u32 == limit;
 
-    let broadcast_msgs: Vec<proto::BroadcastMessage> =
-        msgs.into_iter().map(stored_to_broadcast).collect();
+    let mut broadcast_msgs: Vec<proto::BroadcastMessage> = Vec::with_capacity(msgs.len());
+    for m in msgs {
+        broadcast_msgs.push(stored_to_broadcast(state, m).await);
+    }
 
     let resp = HistoryResponse {
         topic_id,
@@ -1139,8 +1278,10 @@ async fn handle_sync(state: &Arc<AppState>, payload: &[u8]) -> anyhow::Result<Se
         .await?;
     let latest = state.storage.latest_seq(&topic_id).await?;
 
-    let broadcast_msgs: Vec<proto::BroadcastMessage> =
-        msgs.into_iter().map(stored_to_broadcast).collect();
+    let mut broadcast_msgs: Vec<proto::BroadcastMessage> = Vec::with_capacity(msgs.len());
+    for m in msgs {
+        broadcast_msgs.push(stored_to_broadcast(state, m).await);
+    }
 
     let resp = SyncResponse {
         topic_id,

@@ -23,6 +23,7 @@
         <button class="nav-item" data-page="advanced">高级</button>
         <button class="nav-item" data-page="bots">Bot</button>
         <button class="nav-item" data-page="data">数据</button>
+        <button class="nav-item" data-page="stickers">表情包</button>
       </nav>
       <div class="sidebar-footer">
         <a href="index.html" class="admin-link">← 返回首页</a>
@@ -245,6 +246,19 @@
           <button class="btn danger" id="clear-topic-btn">清除该话题消息</button>
           <button class="btn danger" id="clear-all-btn">清空全部消息</button>
         </div>
+      </section>
+
+      <!-- 表情包管理（F-STICKER） -->
+      <section id="page-stickers" class="page hidden">
+        <h1>表情包管理</h1>
+        <p class="desc">服务器表情包由管理员维护，所有成员只读使用；支持图片/GIF 表情（上传后存服务器附件，自动去重）与 emoji。</p>
+        <h2>新增表情包</h2>
+        <div class="form-row">
+          <input id="stk-pack-name" placeholder="包名（如：猫猫）" />
+          <button class="btn" id="stk-pack-add">添加</button>
+        </div>
+        <p class="desc">添加表情：选择<b>图片/GIF 上传</b>（自动存服务器附件，去重）。</p>
+        <div id="stk-packs"></div>
       </section>
     </main>
   </div>

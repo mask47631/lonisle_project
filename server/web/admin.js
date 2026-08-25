@@ -552,6 +552,7 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
     if (page === "settings") fetchSettings();
     if (page === "advanced") fetchAdvanced();
     if (page === "bots") fetchBots();
+    if (page === "stickers") fetchStickerPacks();
   });
 });
 
@@ -574,6 +575,142 @@ document.getElementById("export-json").addEventListener("click", () => downloadE
 document.getElementById("export-zip").addEventListener("click", () => downloadExport(true));
 document.getElementById("clear-all-btn").addEventListener("click", clearAll);
 document.getElementById("bot-create").addEventListener("click", createBot);
+
+// ---- 表情包管理（F-STICKER） ----
+
+async function fetchStickerPacks() {
+  const data = await getJSON("/api/sticker-packs");
+  const wrap = document.getElementById("stk-packs");
+  wrap.innerHTML = "";
+  for (const p of data.packs || []) {
+    const box = document.createElement("div");
+    box.className = "form-col";
+    box.style.cssText = "border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px;margin-bottom:16px;";
+    const head = document.createElement("div");
+    head.className = "form-row";
+    head.innerHTML = `
+      <strong style="font-size:15px">${escapeHtml(p.name)}</strong>
+      <button class="btn" data-stk-pack-edit="${p.id}">改</button>
+      <button class="btn reject" data-stk-pack-del="${p.id}">删包</button>
+      <button class="btn" data-stk-pack-up="${p.id}">上移</button>
+      <button class="btn" data-stk-pack-down="${p.id}">下移</button>
+    `;
+    box.appendChild(head);
+    const add = document.createElement("div");
+    add.className = "form-row";
+    add.innerHTML = `
+      <input type="file" accept="image/*" style="flex:1;min-width:200px;color:var(--text)" />
+      <button class="btn" data-stk-add="${p.id}">上传为表情</button>
+    `;
+    box.appendChild(add);
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;";
+    p.stickers.forEach((s, idx) => {
+      const chip = document.createElement("div");
+      chip.style.cssText = "display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:var(--bg-3);";
+      const media = s.type === "image"
+        ? `<img src="/attachments/${s.content.replace("att:", "")}/thumbnail" style="height:40px;width:auto;max-width:120px;object-fit:contain;border-radius:4px" onerror="this.style.display='none'" />`
+        : `<span style="font-size:20px">${escapeHtml(s.content)}</span>`;
+      chip.innerHTML = `
+        ${media}
+        <button class="btn reject" style="padding:2px 8px" data-stk-del="${s.id}">×</button>
+        <button class="btn" style="padding:2px 8px" data-stk-up="${s.id}" data-pack="${p.id}">↑</button>
+        <button class="btn" style="padding:2px 8px" data-stk-down="${s.id}" data-pack="${p.id}">↓</button>
+      `;
+      grid.appendChild(chip);
+    });
+    box.appendChild(grid);
+    wrap.appendChild(box);
+  }
+  // 包级事件
+  wrap.querySelectorAll("[data-stk-pack-edit]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const name = prompt("新包名：", "");
+      if (!name) return;
+      postJSON("/api/sticker-packs/save", { id: b.dataset.stkPackEdit, name, icon: "" }).then(fetchStickerPacks);
+    }));
+  wrap.querySelectorAll("[data-stk-pack-del]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!confirm("删除该表情包？")) return;
+      await postJSON("/api/sticker-packs/delete", { id: b.dataset.stkPackDel });
+      fetchStickerPacks();
+    }));
+  wrap.querySelectorAll("[data-stk-pack-up],[data-stk-pack-down]").forEach((b) => {
+    b.addEventListener("click", () => moveStickerPack(b.dataset.stkPackUp || b.dataset.stkPackDown, b.dataset.stkPackUp ? -1 : 1));
+  });
+  wrap.querySelectorAll("[data-stk-add]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const packId = b.dataset.stkAdd;
+      const fileInput = b.parentElement.querySelector('input[type="file"]');
+      if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        alert("请先选择图片/GIF 文件");
+        return;
+      }
+      const file = fileInput.files[0];
+      const btn = b;
+      btn.disabled = true;
+      btn.textContent = "上传中…";
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("msg_id", "sticker-" + Date.now());
+        fd.append("kind", "image");
+        fd.append("user_id", "admin");
+        const resp = await fetch("/attachments/upload", { method: "POST", body: fd });
+        const data = await resp.json();
+        if (data.ok && data.attachment_id) {
+          await postJSON("/api/stickers/save", { id: "", pack_id: packId, type: "image", content: "att:" + data.attachment_id });
+        } else {
+          alert("上传失败：" + (data.error || "未知错误"));
+        }
+      } catch (e) {
+        alert("上传失败：" + e);
+      }
+      btn.disabled = false;
+      btn.textContent = "上传为表情";
+      fileInput.value = "";
+      fetchStickerPacks();
+    }));
+  wrap.querySelectorAll("[data-stk-del]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await postJSON("/api/stickers/delete", { id: b.dataset.stkDel });
+      fetchStickerPacks();
+    }));
+  wrap.querySelectorAll("[data-stk-up],[data-stk-down]").forEach((b) => {
+    b.addEventListener("click", () => moveSticker(b.dataset.stkUp || b.dataset.stkDown, b.dataset.pack, b.dataset.stkUp ? -1 : 1));
+  });
+}
+
+async function moveStickerPack(id, dir) {
+  const data = await getJSON("/api/sticker-packs");
+  const packs = data.packs || [];
+  const idx = packs.findIndex((p) => p.id === id);
+  const j = idx + dir;
+  if (idx < 0 || j < 0 || j >= packs.length) return;
+  [packs[idx], packs[j]] = [packs[j], packs[idx]];
+  await postJSON("/api/sticker-packs/reorder", { ids: packs.map((p) => p.id) });
+  fetchStickerPacks();
+}
+
+async function moveSticker(id, packId, dir) {
+  const data = await getJSON("/api/sticker-packs");
+  const pack = (data.packs || []).find((p) => p.id === packId);
+  if (!pack) return;
+  const idx = pack.stickers.findIndex((s) => s.id === id);
+  const j = idx + dir;
+  if (idx < 0 || j < 0 || j >= pack.stickers.length) return;
+  [pack.stickers[idx], pack.stickers[j]] = [pack.stickers[j], pack.stickers[idx]];
+  await postJSON("/api/stickers/reorder", { pack_id: packId, ids: pack.stickers.map((s) => s.id) });
+  fetchStickerPacks();
+}
+
+document.getElementById("stk-pack-add").addEventListener("click", async () => {
+  const name = document.getElementById("stk-pack-name").value.trim();
+  if (!name) { alert("请输入包名"); return; }
+  await postJSON("/api/sticker-packs/save", { id: "", name, icon: "" });
+  document.getElementById("stk-pack-name").value = "";
+  fetchStickerPacks();
+});
 
 // 初始化
 fetchStatus();

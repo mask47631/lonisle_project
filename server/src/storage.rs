@@ -288,6 +288,26 @@ pub struct BotRecord {
     pub revoked: bool,
 }
 
+/// 表情记录（F-STICKER）
+#[derive(Debug, Clone)]
+pub struct StickerRecord {
+    pub id: String,
+    pub pack_id: String,
+    pub r#type: String,   // emoji | image
+    pub content: String,  // emoji 字符 或 att:xxx
+    pub sort: i32,
+}
+
+/// 表情包记录（含表情列表，按 sort 升序）
+#[derive(Debug, Clone)]
+pub struct StickerPackRecord {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub sort: i32,
+    pub stickers: Vec<StickerRecord>,
+}
+
 /// 附件记录（媒体，M5）
 #[derive(Debug, Clone)]
 pub struct AttachmentRecord {
@@ -544,6 +564,21 @@ pub trait Storage: Send + Sync {
 
     /// 列出全部附件记录（数据导出 zip 打包用，F-PERM-2a）。
     async fn list_all_attachments(&self) -> Result<Vec<AttachmentRecord>, StorageError>;
+
+    // ---- 表情包（F-STICKER） ----
+
+    /// 列出全部表情包（含表情，按 sort 升序）。
+    async fn list_sticker_packs(&self) -> Result<Vec<StickerPackRecord>, StorageError>;
+    /// 新增/更新表情包。
+    async fn upsert_sticker_pack(&self, id: &str, name: &str, icon: &str, sort: i32) -> Result<(), StorageError>;
+    /// 删除表情包（连带表情）。
+    async fn delete_sticker_pack(&self, id: &str) -> Result<(), StorageError>;
+    /// 新增/更新包内表情。
+    async fn upsert_sticker(&self, id: &str, pack_id: &str, r#type: &str, content: &str, sort: i32) -> Result<(), StorageError>;
+    /// 删除表情。
+    async fn delete_sticker(&self, id: &str) -> Result<(), StorageError>;
+    /// 批量更新排序（包或表情，id -> sort）。
+    async fn reorder_stickers(&self, pack_id: Option<&str>, order: &[(String, i32)]) -> Result<(), StorageError>;
 
     // ---- Reaction（M5） ----
 
@@ -1007,6 +1042,37 @@ impl SqliteStorage {
                 sqlx::query(ddl).execute(&self.pool).await?;
             }
         }
+
+        // 表情包表（F-STICKER：服务器包管理员管理，成员只读）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS sticker_packs (
+                id   TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                icon TEXT NOT NULL DEFAULT '',
+                sort INTEGER NOT NULL DEFAULT 0
+            );
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS stickers (
+                id      TEXT PRIMARY KEY,
+                pack_id TEXT NOT NULL,
+                type    TEXT NOT NULL,
+                content TEXT NOT NULL,
+                sort    INTEGER NOT NULL DEFAULT 0
+            );
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_stickers_pack ON stickers (pack_id)")
+            .execute(&self.pool)
+            .await
+            .ok();
 
         Ok(())
     }
@@ -2011,6 +2077,114 @@ impl Storage for SqliteStorage {
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().map(row_to_attachment).collect())
+    }
+
+    // ---- 表情包（F-STICKER） ----
+
+    async fn list_sticker_packs(&self) -> Result<Vec<StickerPackRecord>, StorageError> {
+        let packs = sqlx::query(
+            "SELECT id, name, icon, sort FROM sticker_packs ORDER BY sort ASC, id ASC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let mut result = Vec::new();
+        for p in packs {
+            let pack_id: String = p.get("id");
+            let stickers = sqlx::query(
+                "SELECT id, pack_id, type, content, sort FROM stickers WHERE pack_id = ? ORDER BY sort ASC, id ASC",
+            )
+            .bind(&pack_id)
+            .fetch_all(&self.pool)
+            .await?;
+            result.push(StickerPackRecord {
+                id: pack_id,
+                name: p.get("name"),
+                icon: p.get("icon"),
+                sort: p.get("sort"),
+                stickers: stickers
+                    .into_iter()
+                    .map(|s| StickerRecord {
+                        id: s.get("id"),
+                        pack_id: s.get("pack_id"),
+                        r#type: s.get("type"),
+                        content: s.get("content"),
+                        sort: s.get("sort"),
+                    })
+                    .collect(),
+            });
+        }
+        Ok(result)
+    }
+
+    async fn upsert_sticker_pack(&self, id: &str, name: &str, icon: &str, sort: i32) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO sticker_packs (id, name, icon, sort) VALUES (?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, icon = excluded.icon, sort = excluded.sort",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(icon)
+        .bind(sort as i64)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn delete_sticker_pack(&self, id: &str) -> Result<(), StorageError> {
+        sqlx::query("DELETE FROM stickers WHERE pack_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM sticker_packs WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn upsert_sticker(&self, id: &str, pack_id: &str, r#type: &str, content: &str, sort: i32) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO stickers (id, pack_id, type, content, sort) VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET pack_id = excluded.pack_id, type = excluded.type, content = excluded.content, sort = excluded.sort",
+        )
+        .bind(id)
+        .bind(pack_id)
+        .bind(r#type)
+        .bind(content)
+        .bind(sort as i64)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn delete_sticker(&self, id: &str) -> Result<(), StorageError> {
+        sqlx::query("DELETE FROM stickers WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn reorder_stickers(&self, pack_id: Option<&str>, order: &[(String, i32)]) -> Result<(), StorageError> {
+        for (id, sort) in order {
+            if let Some(pack) = pack_id {
+                // 表情排序：更新该包内表情的 sort
+                sqlx::query("UPDATE stickers SET sort = ? WHERE id = ? AND pack_id = ?")
+                    .bind(*sort as i64)
+                    .bind(id)
+                    .bind(pack)
+                    .execute(&self.pool)
+                    .await?;
+            } else {
+                // 包排序
+                sqlx::query("UPDATE sticker_packs SET sort = ? WHERE id = ?")
+                    .bind(*sort as i64)
+                    .bind(id)
+                    .execute(&self.pool)
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     // ---- Reaction（M5） ----

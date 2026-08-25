@@ -309,6 +309,31 @@ message HistoryResponse {
   bool has_more = 3;               // 是否还有更早的消息
 }
 
+// 表情包（服务器包：管理员管理，成员只读；本地包仅客户端本地存储，不走协议）
+message Sticker {
+  string id = 1;
+  string pack_id = 2;
+  string type = 3;       // emoji | image（image 时 content 为附件引用 att:xxx）
+  string content = 4;    // emoji 字符 或 att:xxx
+  int32 sort = 5;        // 排序值（升序，越小越靠前）
+}
+
+message StickerPack {
+  string id = 1;
+  string name = 2;
+  string icon = 3;       // 包图标（emoji 或图片附件引用）
+  int32 sort = 4;        // 包排序
+  repeated Sticker stickers = 5;
+}
+
+// 客户端 → 服务器：拉取服务器表情包（join 后调用一次，payload 空）
+message StickerPackListRequest {}
+
+// 服务器 → 客户端：表情包列表响应
+message StickerPackListResponse {
+  repeated StickerPack packs = 1;
+}
+
 // ============================================================
 // 成员
 // ============================================================
@@ -574,6 +599,7 @@ message ClientEnvelope {
     MENTION_READ_LIST = 36;
     JOIN_AV = 37;
     HISTORY = 38;                // 历史消息向前翻页（加载更早消息）
+    STICKER_PACKS_LIST = 39;     // 拉取服务器表情包
   }
   MsgType type = 1;
   uint64 request_id = 2;           // 请求 ID，用于关联回执
@@ -605,6 +631,8 @@ message ServerEnvelope {
     JOIN_AV_RESPONSE = 19;           // 音视频加入响应（LiveKit）
     SERVER_INFO_UPDATED = 20;        // 服务器资料变更推送（名称/简介/图标，payload 为 ServerInfo）
     HISTORY_RESPONSE = 21;           // 历史消息翻页响应（payload 为 HistoryResponse）
+    STICKER_PACKS_RESPONSE = 22;     // 表情包列表响应（payload 为 StickerPackListResponse）
+    STICKER_PACKS_UPDATED = 23;      // 表情包变更推送（payload 为 StickerPackListResponse）
   }
   MsgType type = 1;
   uint64 request_id = 2;
