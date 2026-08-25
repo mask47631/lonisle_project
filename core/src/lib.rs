@@ -15,5 +15,6 @@ pub mod x25519;
 pub mod aes_gcm;
 pub mod ratchet;
 pub mod x3dh;
+pub mod tls;
 
 pub use version::PROTOCOL_VERSION;

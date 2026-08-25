@@ -146,7 +146,8 @@ async fn main() -> anyhow::Result<()> {
 
     let addr: SocketAddr = args.listen.parse().context("无效监听地址")?;
 
-    // TLS 证书路径：web 管理端（DB）配置优先，回退命令行/环境变量（统一 HTTPS）
+    // TLS 证书路径：web 管理端（DB）配置优先，回退命令行/环境变量；
+    // 均未配置时自动生成自签证书（与聊天服务器统一，总是 HTTPS）
     let (mut tls_cert, mut tls_key) = (args.tls_cert.clone(), args.tls_key.clone());
     match storage.get_tls_config().await {
         Ok((cert, key)) => {
@@ -161,22 +162,28 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    if tls_cert.is_empty() || tls_key.is_empty() {
-        // 未配置证书 → HTTP（默认行为，向后兼容）
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        info!(%addr, "推送服务已启动（HTTP）");
-        axum::serve(listener, router).await?;
+    // 加载证书材料（外部证书 → 自动生成自签，统一 HTTPS）
+    let tls = if !tls_cert.is_empty() && !tls_key.is_empty() {
+        lonisle_core::tls::load_external(
+            std::path::Path::new(&tls_cert),
+            std::path::Path::new(&tls_key),
+        )
+        .context("加载 TLS 证书失败（检查证书/私钥路径与格式）")?
     } else {
-        // 配置了证书 → HTTPS（与聊天服务器统一）
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(&tls_cert, &tls_key)
-            .await
-            .context("加载 TLS 证书失败（检查证书/私钥路径与格式）")?;
-        info!(%addr, cert = %tls_cert, "推送服务已启动（HTTPS）");
-        axum_server::bind_rustls(addr, tls_config)
-            .serve(router.into_make_service())
-            .await?;
-    }
+        lonisle_core::tls::load_or_generate(std::path::Path::new(&args.data_dir))
+            .context("生成自签 TLS 证书失败")?
+    };
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem(
+        tls.cert_pem.into_bytes(),
+        tls.key_pem.into_bytes(),
+    )
+    .await
+    .context("加载 TLS 配置失败")?;
+    info!(%addr, fingerprint = %tls.fingerprint, "推送服务已启动（HTTPS）");
+    axum_server::bind_rustls(addr, tls_config)
+        .serve(router.into_make_service())
+        .await?;
 
     Ok(())
 }

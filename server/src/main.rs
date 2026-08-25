@@ -207,12 +207,12 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     let tls = if !tls_cert_path.is_empty() && !tls_key_path.is_empty() {
-        lonisle_server::tls::load_external(
+        lonisle_core::tls::load_external(
             std::path::Path::new(&tls_cert_path),
             std::path::Path::new(&tls_key_path),
         )?
     } else {
-        lonisle_server::tls::load_or_generate(&args.data_dir)?
+        lonisle_core::tls::load_or_generate(&args.data_dir)?
     };
     println!("==================================================");
     println!(" LonIsle 服务器证书指纹（邀请链接 # 后缀，F-JOIN-7）：");

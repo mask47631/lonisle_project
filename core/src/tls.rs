@@ -43,7 +43,7 @@ pub fn load_or_generate(data_dir: &Path) -> anyhow::Result<TlsMaterial> {
         .map_err(|e| anyhow::anyhow!("生成 TLS 密钥失败: {e}"))?;
 
     let mut params = rcgen::CertificateParams::new(vec![
-        "lonisle-server".to_string(),
+        "LonIsle".to_string(),
         "localhost".to_string(),
     ])
     .map_err(|e| anyhow::anyhow!("构造证书参数失败: {e}"))?;

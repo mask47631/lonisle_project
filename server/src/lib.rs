@@ -11,7 +11,6 @@ pub mod admin;
 pub mod push_client;
 pub mod attachments;
 pub mod livekit;
-pub mod tls;
 pub mod backup;
 
 pub use storage::{SqliteStorage, Storage};

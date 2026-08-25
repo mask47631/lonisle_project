@@ -25,6 +25,10 @@ bip39.workspace = true
 x25519-dalek.workspace = true
 aes-gcm.workspace = true
 hkdf.workspace = true
+anyhow.workspace = true
+base64.workspace = true
+rcgen.workspace = true
+tracing.workspace = true
 
 [build-dependencies]
 prost-build.workspace = true
