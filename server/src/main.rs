@@ -61,25 +61,25 @@ struct Args {
     /// 备份口令（可用环境变量 LONISLE_BACKUP_PASSPHRASE；备份/恢复加密格式时必填）
     #[arg(long, default_value = "", env = "LONISLE_BACKUP_PASSPHRASE")]
     backup_passphrase: String,
+
+    /// 日志文件保留天数（文件日志按天轮转，写入 {data_dir}/logs）
+    #[arg(long, default_value_t = 7, env = "LOG_RETAIN_DAYS")]
+    log_retain_days: u32,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,tower_http=warn".into()),
-        )
-        .init();
-
     let args = Args::parse();
+
+    // 准备数据目录（日志子目录随后由 init_logging 创建）
+    std::fs::create_dir_all(&args.data_dir)
+        .with_context(|| format!("创建数据目录失败：{:?}", args.data_dir))?;
+
+    // 日志：stdout + 文件（按天轮转，{data_dir}/logs，保留 N 天）
+    lonisle_core::logging::init("lonisle-server", &args.data_dir, args.log_retain_days)?;
 
     // rustls CryptoProvider（ring，供 TLS 使用）
     let _ = rustls::crypto::ring::default_provider().install_default();
-
-    // 准备数据目录
-    std::fs::create_dir_all(&args.data_dir)
-        .with_context(|| format!("创建数据目录失败：{:?}", args.data_dir))?;
 
     // 密钥恢复：从备份恢复服务器密钥对
     if let Some(restore_path) = &args.restore_key {

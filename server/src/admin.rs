@@ -138,6 +138,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/stickers/save", post(api_save_sticker))
         .route("/api/stickers/delete", post(api_delete_sticker))
         .route("/api/stickers/reorder", post(api_reorder_stickers))
+        // 日志查看（管理界面「日志」页，读 {data_dir}/logs 最新文件尾部）
+        .route("/api/logs", get(api_logs))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             admin_auth,
@@ -1614,5 +1616,22 @@ fn role_to_str(r: MemberRole) -> &'static str {
         MemberRole::Owner => "owner",
         MemberRole::Admin => "admin",
         MemberRole::Member => "member",
+    }
+}
+
+/// 读取最新日志文件末尾 N 行（管理界面「日志」页）
+/// 返回 { file, content }；日志目录为空时返回空内容。
+async fn api_logs(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let lines = params
+        .get("lines")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(500)
+        .min(5000);
+    match lonisle_core::logging::read_tail(std::path::Path::new(&state.log_dir), lines) {
+        Ok((file, content)) => axum::Json(json!({"ok": true, "file": file, "content": content})),
+        Err(_) => axum::Json(json!({"ok": true, "file": "", "content": ""})),
     }
 }

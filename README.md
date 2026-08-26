@@ -195,6 +195,7 @@ chmod +x lonisle-server
 | `--bot-token` | 空 | Bot Token（启用 Bot 认证） |
 | `--backup-key` / `--restore-key` | - | 服务器密钥备份 / 恢复路径 |
 | `--backup-passphrase` | 空 | 备份口令（env `LONISLE_BACKUP_PASSPHRASE`） |
+| `--log-retain-days` | `7` | 日志文件保留天数（env `LOG_RETAIN_DAYS`） |
 
 **推送服务 lonisle-push**
 
@@ -211,9 +212,12 @@ chmod +x lonisle-server
 | `--fcm-project-id` / `--fcm-client-id` / `--fcm-client-secret` / `--fcm-refresh-token` | 空 | FCM OAuth2 四项凭证（env `FCM_*`；也可在管理界面粘贴服务账号 JSON） |
 | `--fcm-service-account` | 空 | FCM 服务账号 JSON 路径（env `FCM_SERVICE_ACCOUNT`；非空时优先于 OAuth2 方式） |
 | `--tls-cert` / `--tls-key` | 空 | 证书 PEM 路径（env `TLS_CERT` / `TLS_KEY`；留空回退 HTTP） |
+| `--log-retain-days` | `7` | 日志文件保留天数（env `LOG_RETAIN_DAYS`） |
 
 > 运行 `./lonisle-server --help` / `./lonisle-push --help` 可查看全部参数。
 > ⚠️ 首次启动会生成服务器密钥对（`server_id = 公钥哈希`），请备份 `data_dir` 中的密钥，丢失即身份失效。
+
+**日志**：stdout（终端 / docker logs）与文件双输出。文件按天轮转写入 `{data_dir}/logs/{服务名}.{日期}.log`，保留 `LOG_RETAIN_DAYS` 天（默认 7，0 = 不删除）；级别由 `RUST_LOG` 控制（默认 `info,tower_http=warn`）。两个服务的**管理界面均新增「日志」页**（服务器 `/admin.html`、推送 `/admin.html`），实时查看最新日志。
 
 ### 构建客户端
 

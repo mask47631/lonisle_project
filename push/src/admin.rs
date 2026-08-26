@@ -38,6 +38,8 @@ pub fn build_admin_router(state: Arc<AppState>) -> Router {
         .route("/admin/blacklist/remove", post(remove_blacklist))
         .route("/admin/fcm-config", get(get_fcm_config).post(set_fcm_config))
         .route("/admin/tls-config", get(get_tls_config).post(set_tls_config))
+        // 日志查看（管理界面「日志」页，读 {data_dir}/logs 最新文件尾部）
+        .route("/admin/logs", get(api_logs))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             admin_auth,
@@ -488,4 +490,21 @@ async fn remove_blacklist(
 
 fn current_unix_time() -> i64 {
     lonisle_core::device::current_unix_time()
+}
+
+/// 读取最新日志文件末尾 N 行（管理界面「日志」页）
+/// 返回 { file, content }；日志目录为空时返回空内容。
+async fn api_logs(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let lines = params
+        .get("lines")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(500)
+        .min(5000);
+    match lonisle_core::logging::read_tail(std::path::Path::new(&state.log_dir), lines) {
+        Ok((file, content)) => Json(json!({"ok": true, "file": file, "content": content})),
+        Err(_) => Json(json!({"ok": true, "file": "", "content": ""})),
+    }
 }

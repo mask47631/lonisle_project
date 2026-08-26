@@ -18,7 +18,10 @@ tokio = { version = "1", features = ["full"] }
 axum = { version = "0.7", features = ["ws", "http1", "tokio", "multipart"] }
 tower = "0.4"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# registry：支持 stdout + 文件多 writer 分层输出；env-filter：RUST_LOG 级别控制
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+# 文件日志（按天轮转 + 保留天数），见 server/push main.rs 日志初始化
+tracing-appender = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 prost = "0.13"

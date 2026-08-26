@@ -65,19 +65,19 @@ struct Args {
     /// TLS 私钥 PEM 文件路径（与环境变量 TLS_KEY 等效）
     #[arg(long, default_value = "", env = "TLS_KEY")]
     tls_key: String,
+
+    /// 日志文件保留天数（文件日志按天轮转，写入 {data_dir}/logs）
+    #[arg(long, default_value_t = 7, env = "LOG_RETAIN_DAYS")]
+    log_retain_days: u32,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,tower_http=warn".into()),
-        )
-        .init();
-
     let args = Args::parse();
     std::fs::create_dir_all(&args.data_dir).context("创建数据目录失败")?;
+
+    // 日志：stdout + 文件（按天轮转，{data_dir}/logs，保留 N 天）
+    lonisle_core::logging::init("lonisle-push", &args.data_dir, args.log_retain_days)?;
 
     let db_path = args.data_dir.join("push.db");
     let storage = SqliteStorage::open(db_path.to_str().unwrap())
@@ -128,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
         args.rate_per_minute,
     );
     app_state.admin_key = admin_key;
+    app_state.log_dir = args.data_dir.join("logs").to_string_lossy().into_owned();
     *app_state.fcm_config.write().unwrap() = if fcm_config.complete() {
         Some(fcm_config)
     } else {

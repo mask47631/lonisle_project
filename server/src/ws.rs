@@ -37,6 +37,8 @@ pub struct AppState {
     pub online: Mutex<std::collections::HashMap<String, usize>>,
     /// 数据目录（附件存储）
     pub data_dir: String,
+    /// 日志目录（管理界面「日志」页读取，{data_dir}/logs）
+    pub log_dir: String,
     /// Bot Token（M6，Bot 认证用；空表示未配置）
     pub bot_token: String,
     /// 管理 API Token（空 = 鉴权关闭，仅限开发/测试）
@@ -56,6 +58,7 @@ impl AppState {
             broadcast,
             online: Mutex::new(std::collections::HashMap::new()),
             data_dir: String::new(),
+            log_dir: String::new(),
             bot_token: String::new(),
             admin_token: String::new(),
             tls_fingerprint: String::new(),
@@ -65,6 +68,7 @@ impl AppState {
 
     pub fn with_data_dir(storage: Arc<dyn Storage>, keypair: DeviceKeypair, data_dir: String) -> Self {
         let mut state = Self::new(storage, keypair);
+        state.log_dir = std::path::Path::new(&data_dir).join("logs").to_string_lossy().into_owned();
         state.data_dir = data_dir;
         state
     }

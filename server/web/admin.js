@@ -553,10 +553,26 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
     if (page === "advanced") fetchAdvanced();
     if (page === "bots") fetchBots();
     if (page === "stickers") fetchStickerPacks();
+    if (page === "logs") fetchLogs();
   });
 });
 
+// ---- 日志查看 ----
+async function fetchLogs() {
+  const lines = document.getElementById("log-lines").value || 500;
+  try {
+    const res = await apiFetch("api/logs?lines=" + lines);
+    const data = await res.json();
+    document.getElementById("log-file").textContent = data.file ? "当前文件：" + data.file : "（暂无日志文件）";
+    document.getElementById("log-content").textContent = data.content || "（暂无日志）";
+  } catch (e) {
+    document.getElementById("log-content").textContent = "读取日志失败：" + e.message;
+  }
+}
+
 // 事件绑定
+document.getElementById("log-refresh").addEventListener("click", fetchLogs);
+document.getElementById("log-lines").addEventListener("change", fetchLogs);
 document.getElementById("topic-create").addEventListener("click", createTopic);
 document.getElementById("topic-modal-save").addEventListener("click", saveTopicModal);
 document.getElementById("topic-modal-cancel").addEventListener("click", closeTopicModal);

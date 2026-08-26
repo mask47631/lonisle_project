@@ -51,6 +51,8 @@ pub struct AppState {
     pub circuit_breaker_threshold: u32,
     /// 运营方管理 API Key（空 = 鉴权关闭，仅限开发/测试）
     pub admin_key: String,
+    /// 日志目录（管理界面「日志」页读取，{data_dir}/logs）
+    pub log_dir: String,
     /// FCM 推送配置（web 端配置，动态更新，F-PUSH-2）
     pub fcm_config: std::sync::RwLock<Option<FcmConfig>>,
     /// 目录服务器实时状态缓存（server_id -> DirectoryStatus）
@@ -70,6 +72,7 @@ impl AppState {
             whitelist_mode: std::sync::RwLock::new(true),
             circuit_breaker_threshold: 100,
             admin_key: String::new(),
+            log_dir: String::new(),
             fcm_config: std::sync::RwLock::new(None),
             directory_status: std::sync::RwLock::new(std::collections::HashMap::new()),
         }

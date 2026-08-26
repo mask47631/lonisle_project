@@ -16,5 +16,6 @@ pub mod aes_gcm;
 pub mod ratchet;
 pub mod x3dh;
 pub mod tls;
+pub mod logging;
 
 pub use version::PROTOCOL_VERSION;

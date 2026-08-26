@@ -24,6 +24,7 @@
         <button class="nav-item" data-page="bots">Bot</button>
         <button class="nav-item" data-page="data">数据</button>
         <button class="nav-item" data-page="stickers">表情包</button>
+        <button class="nav-item" data-page="logs">日志</button>
       </nav>
       <div class="sidebar-footer">
         <a href="index.html" class="admin-link">← 返回首页</a>
@@ -259,6 +260,22 @@
         </div>
         <p class="desc">添加表情：选择<b>图片/GIF 上传</b>（自动存服务器附件，去重）。</p>
         <div id="stk-packs"></div>
+      </section>
+
+      <!-- 日志查看（F-LOG：读 {data_dir}/logs 最新文件尾部） -->
+      <section id="page-logs" class="page hidden">
+        <h1>日志</h1>
+        <p class="desc">实时查看服务器日志（按天轮转，保留 <code>LOG_RETAIN_DAYS</code> 天，默认 7）。</p>
+        <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="log-lines">
+            <option value="200">200 行</option>
+            <option value="500" selected>500 行</option>
+            <option value="2000">2000 行</option>
+          </select>
+          <button class="btn" id="log-refresh">刷新</button>
+          <span id="log-file" style="opacity:.7;font-size:12px;"></span>
+        </div>
+        <pre id="log-content" style="background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;max-height:60vh;overflow:auto;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;margin:0;"></pre>
       </section>
     </main>
   </div>
