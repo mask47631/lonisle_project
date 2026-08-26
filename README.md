@@ -171,6 +171,54 @@ cargo test
 
 > 注：`server/build.rs` 与 `push/build.rs` 使用纯 Rust 生成版本号（UTC 时间 `YYYYMMDDHHMM`），不再依赖 `date` 命令，Windows 亦可编译。
 
+### 使用编译产物启动（二进制部署）
+
+无需安装 Rust 环境。从 **GitHub Release**（推送 `v*` tag 自动生成）或 **Actions Artifacts**（手动触发后下载）获取对应平台的 zip，解压即用——zip 内为单个可执行文件，Web 资源已通过 rust-embed 内嵌。
+
+```bash
+# Linux / macOS：解压并赋执行权限
+unzip lonisle-server-<target>.zip
+chmod +x lonisle-server
+
+# Windows：解压 lonisle-server.exe 后可直接运行（cmd / PowerShell）
+```
+
+**聊天服务器 lonisle-server**
+
+```bash
+./lonisle-server --listen 0.0.0.0:8080 --data-dir ./data --name "我的服务器"
+```
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `--listen` | `127.0.0.1:8080` | 监听地址（公网部署用 `0.0.0.0:8080`） |
+| `--data-dir` | `./data` | 数据目录（密钥、SQLite 数据库） |
+| `--name` / `--description` | `LonIsle Server` / 空 | 服务器显示名称 / 简介 |
+| `--admin-token` | 自动生成 | 管理 API Token（env `LONISLE_ADMIN_TOKEN`；缺省自动生成并打印一次） |
+| `--tls-cert` / `--tls-key` | 自签 | 外部证书 PEM 路径（env `TLS_CERT` / `TLS_KEY`；留空自动生成自签证书） |
+| `--bot-token` | 空 | Bot Token（启用 Bot 认证） |
+| `--backup-key` / `--restore-key` | - | 服务器密钥备份 / 恢复路径 |
+| `--backup-passphrase` | 空 | 备份口令（env `LONISLE_BACKUP_PASSPHRASE`） |
+
+**推送服务 lonisle-push**
+
+```bash
+./lonisle-push --listen 0.0.0.0:8081 --data-dir ./data --admin-key "管理Key"
+```
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `--listen` | `127.0.0.1:8081` | 监听地址（env `LISTEN`） |
+| `--data-dir` | `./data` | 数据目录（env `DATA_DIR`） |
+| `--rate-per-minute` | `2` | 每 IP 每分钟请求数上限（env `RATE_PER_MINUTE`） |
+| `--admin-key` | 空 | 管理界面 Key（env `PUSH_ADMIN_KEY`） |
+| `--fcm-project-id` / `--fcm-client-id` / `--fcm-client-secret` / `--fcm-refresh-token` | 空 | FCM OAuth2 四项凭证（env `FCM_*`；也可在管理界面粘贴服务账号 JSON） |
+| `--fcm-service-account` | 空 | FCM 服务账号 JSON 路径（env `FCM_SERVICE_ACCOUNT`；非空时优先于 OAuth2 方式） |
+| `--tls-cert` / `--tls-key` | 空 | 证书 PEM 路径（env `TLS_CERT` / `TLS_KEY`；留空回退 HTTP） |
+
+> 运行 `./lonisle-server --help` / `./lonisle-push --help` 可查看全部参数。
+> ⚠️ 首次启动会生成服务器密钥对（`server_id = 公钥哈希`），请备份 `data_dir` 中的密钥，丢失即身份失效。
+
 ### 构建客户端
 
 ```bash
