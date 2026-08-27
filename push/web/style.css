@@ -90,6 +90,9 @@ td.mono { font-family: "SF Mono", monospace; font-size: 12px; color: var(--text-
 .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
 .badge.approved { background: rgba(35,165,90,0.15); color: var(--green); }
 .badge.pending { background: rgba(240,178,50,0.15); color: var(--amber); }
+.badge.paused { background: rgba(237,66,69,0.15); color: #ed4245; }
+.muted { color: var(--text-dim); font-size: 12px; }
+td a { color: var(--text-dim); word-break: break-all; }
 
 .btn {
   padding: 6px 14px; border: none; border-radius: 8px;

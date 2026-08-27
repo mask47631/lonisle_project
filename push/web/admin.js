@@ -55,10 +55,17 @@ async function fetchWhitelist() {
   for (const e of data.entries || []) {
     const tr = document.createElement("tr");
     const time = new Date(e.applied_at * 1000).toLocaleString("zh-CN");
+    const paused = e.approved && e.paused;
     tr.innerHTML = `
       <td class="mono">${escapeHtml(e.server_id)}</td>
       <td><span class="badge ${e.approved ? 'approved' : 'pending'}">${e.approved ? '已通过' : '待审核'}</span></td>
       <td>${time}</td>
+      <td class="mono">${e.health_url
+        ? `<a href="${escapeHtml(e.health_url)}" target="_blank" rel="noopener">${escapeHtml(e.health_url)}</a>`
+        : (e.approved ? '<span class="muted">未配置（可用上方表单补填）</span>' : '')}</td>
+      <td>${e.approved
+        ? `<span class="badge ${paused ? 'paused' : 'approved'}">${paused ? '已暂停' : '正常'}</span>`
+        : ''}</td>
       <td>
         ${!e.approved ? `
           <button class="btn approve" data-id="${e.server_id}">通过</button>
@@ -84,7 +91,7 @@ async function addWhitelist() {
   await postJSON("/admin/whitelist/add", { server_id: id, health_url: url });
   document.getElementById("whitelist-add-id").value = "";
   document.getElementById("whitelist-add-url").value = "";
-  alert("已手动添加到白名单");
+  alert("已保存到白名单（已存在的服务器将同步更新 health_url）");
   fetchWhitelist();
 }
 

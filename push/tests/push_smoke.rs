@@ -97,6 +97,21 @@ async fn push_flow() {
     .await;
     assert_eq!(status, 200);
 
+    // 5.1 回归断言：approve 不得清空申请时提交的 health_url（否则健康监测永久失效）
+    let (_, wl) = get_json(&base, "/admin/whitelist").await;
+    let entry = wl["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["server_id"] == json!(server_id))
+        .expect("白名单条目应存在");
+    assert_eq!(entry["approved"], json!(true));
+    assert_eq!(
+        entry["health_url"],
+        json!(format!("{}/health", base)),
+        "approve 后 health_url 应保留申请时的值"
+    );
+
     // 6. 目录注册
     let (status, _) = post_json(
         &base,

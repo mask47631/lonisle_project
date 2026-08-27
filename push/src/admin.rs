@@ -350,6 +350,8 @@ async fn list_whitelist(State(state): State<Arc<AppState>>) -> Response {
                 "server_id": e.server_id,
                 "approved": e.approved,
                 "applied_at": e.applied_at,
+                "health_url": e.health_url,
+                "paused": e.paused,
             })).collect::<Vec<_>>(),
         }))
         .into_response(),
@@ -363,11 +365,25 @@ async fn approve_whitelist(
     Json(body): Json<ApproveBody>,
 ) -> Response {
     if body.approve {
+        // 保留申请时提交的 health_url：用空串覆盖会导致监测循环永久跳过该服务器，
+        // "健康异常自动暂停推送"随之失效（approve 必须是状态翻转而非整条重建）
+        let health_url = state
+            .storage
+            .list_whitelist()
+            .await
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .into_iter()
+                    .find(|e| e.server_id == body.server_id)
+                    .map(|e| e.health_url)
+            })
+            .unwrap_or_default();
         let entry = WhitelistEntry {
             server_id: body.server_id.clone(),
             approved: true,
             applied_at: current_unix_time(),
-            health_url: String::new(),
+            health_url,
             paused: false,
         };
         if let Err(e) = state.storage.upsert_whitelist(&entry).await {
