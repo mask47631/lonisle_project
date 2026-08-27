@@ -65,12 +65,12 @@ jobs:
         with:
           workspaces: client/rust
 
-      # Linux 桌面构建依赖 GTK/CMake/Ninja（runner 自带其余部分）
+      # Linux 桌面构建依赖 GTK/CMake/Ninja；libsecret 为 flutter_secure_storage_linux 所需
       - name: 安装 Linux 桌面依赖
         if: matrix.platform == 'linux-x64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev cmake pkg-config
+          sudo apt-get install -y ninja-build libgtk-3-dev cmake pkg-config libsecret-1-dev
 
       # macOS 无证书：显式指定 ad-hoc 签名（"-"），Gatekeeper 提示见 README
       - name: 配置 macOS 免签
