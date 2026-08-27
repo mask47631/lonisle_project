@@ -80,6 +80,10 @@ jobs:
       - name: 拉取依赖并构建（${{ matrix.platform }}）
         working-directory: client
         shell: bash
+        env:
+          # firebase_cpp_sdk_windows 的 CMakeLists 未声明 3.5+ 兼容，新版 CMake(4.x)
+          # 会直接报错；该环境变量对其放行（对无此问题的平台无副作用）
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
         run: |
           flutter pub get
           ${{ matrix.build }}
