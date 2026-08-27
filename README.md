@@ -168,6 +168,18 @@ cargo test
 
 > 注：`server/build.rs` 与 `push/build.rs` 使用纯 Rust 生成版本号（UTC 时间 `YYYYMMDDHHMM`），不再依赖 `date` 命令，Windows 亦可编译。
 
+### 客户端 CI 构建（.github/workflows/build-client.yml）
+
+矩阵编译桌面端客户端三平台（macOS ARM64 / Windows x64 / Linux x64），手动触发或推 `v*` tag 自动发布 Release。**三端均无需开发者证书**：
+
+| 平台 | 产物 | 运行说明 |
+| --- | --- | --- |
+| macOS | `lonisle_client-macos-aarch64.zip`（App Bundle） | ad-hoc 免签，首次打开需右键 → 打开，或 `xattr -cr lonisle_client.app` 移除隔离属性 |
+| Windows | `lonisle_client-windows-x64.zip`（程序目录） | 解压后运行 `lonisle_client.exe`；SmartScreen 警告点"仍要运行" |
+| Linux | `lonisle_client-linux-x64.tar.gz` | 解压后在 bundle 目录内 `./lonisle_client` |
+
+> 桌面端产物为多文件 Bundle（无法像服务端那样发单文件），归档为必要步骤；proto 与 flutter_rust_bridge 生成代码均已入库，CI 无需 protoc/codegen。
+
 ### 使用编译产物启动（二进制部署）
 
 无需安装 Rust 环境。从 **GitHub Release**（推送 `v*` tag 自动生成）或 **Actions Artifacts**（手动触发后下载）获取对应平台的可执行文件——单文件直接下载即用，Web 资源已通过 rust-embed 内嵌。

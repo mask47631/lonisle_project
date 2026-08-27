@@ -1,0 +1,145 @@
+# ============================================================
+# LonIsle 跨平台客户端构建（GitHub Actions）
+#
+# 功能：
+#   - 矩阵编译桌面端客户端：macOS(ARM64) / Windows(x64) / Linux(x64)
+#   - 三端均无需开发者证书：macOS 走 Xcode ad-hoc 免签（下载后需右键打开
+#     或 xattr -cr 移除隔离属性），Windows/Linux 无签名要求
+#   - 桌面端产物为多文件 Bundle（App 目录/exe+DLL+data），无法像服务端那样
+#     发布单文件，统一打一个归档；Linux 用 tar.gz 保留执行位
+#   - 产物上传 Artifact；推送 v* tag 时合并发布为 GitHub Release
+#
+# 触发方式：
+#   1. 手动触发：Actions 页面 → 本 workflow → Run workflow
+#   2. 推送 tag：git tag v0.1.0 && git push origin v0.1.0
+#
+# 注意：
+#   - proto 与 flutter_rust_bridge 生成代码均已入库，CI 无需 protoc/codegen
+#   - Rust 由 cargokit 在构建阶段自动编译，仅需保证 rust 工具链在 PATH
+# ============================================================
+name: 构建桌面端客户端
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  FLUTTER_VERSION: '3.47.0'
+
+jobs:
+  build:
+    name: 客户端 · ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-aarch64
+            os: macos-latest
+            build: flutter build macos --release
+          - platform: windows-x64
+            os: windows-latest
+            build: flutter build windows --release
+          - platform: linux-x64
+            os: ubuntu-latest
+            build: flutter build linux --release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # cargokit 在构建 hook 中调用 cargo 编译 core 库
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 Cargo 构建
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/rust
+
+      # Linux 桌面构建依赖 GTK/CMake/Ninja（runner 自带其余部分）
+      - name: 安装 Linux 桌面依赖
+        if: matrix.platform == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev cmake pkg-config
+
+      # macOS 无证书：显式指定 ad-hoc 签名（"-"），Gatekeeper 提示见 README
+      - name: 配置 macOS 免签
+        if: matrix.platform == 'macos-aarch64'
+        run: echo "CODE_SIGN_IDENTITY=-" >> "$GITHUB_ENV"
+
+      - name: 拉取依赖并构建（${{ matrix.platform }}）
+        working-directory: client
+        shell: bash
+        run: |
+          flutter pub get
+          ${{ matrix.build }}
+
+      # ---- 整理产物：三端产物均为目录 Bundle，统一单归档 ----
+      - name: 打包产物（macOS）
+        if: matrix.platform == 'macos-aarch64'
+        shell: bash
+        run: |
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent \
+            client/build/macos/Build/Products/Release/lonisle_client.app \
+            dist/lonisle_client-${{ matrix.platform }}.zip
+
+      - name: 打包产物（Windows）
+        if: matrix.platform == 'windows-x64'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path client/build/windows/x64/runner/Release/lonisle_client `
+            -DestinationPath dist/lonisle_client-${{ matrix.platform }}.zip
+
+      - name: 打包产物（Linux）
+        if: matrix.platform == 'linux-x64'
+        shell: bash
+        run: |
+          mkdir -p dist
+          # tar.gz 保留可执行位；解压后在 bundle 目录内运行 ./lonisle_client
+          tar -czf dist/lonisle_client-${{ matrix.platform }}.tar.gz \
+            -C client/build/linux/x64/release/bundle .
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: lonisle_client-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  # 推送 v* tag 时，将三端客户端归档合并发布为 GitHub Release
+  release:
+    name: 发布 GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 整理产物目录
+        run: |
+          mkdir -p dist
+          cp artifacts/* dist/
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
