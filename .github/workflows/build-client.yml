@@ -102,9 +102,22 @@ jobs:
         if: matrix.platform == 'windows-x64'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path client/build/windows/x64/runner/Release/lonisle_client `
-            -DestinationPath dist/lonisle_client-${{ matrix.platform }}.zip
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force dist, staging | Out-Null
+          $stage = "staging/lonisle_client"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          $root = "client/build/windows/x64/runner/Release"
+          Write-Host "Release 目录内容：" ; Get-ChildItem $root -Recurse -Depth 2 | Select-Object FullName
+          if (Test-Path "$root\lonisle_client\lonisle_client.exe") {
+            # 传统布局：完整程序目录在 Release/lonisle_client/
+            Copy-Item "$root\lonisle_client\*" $stage -Recurse -Force
+          } else {
+            # 平铺布局：exe/dll/data 直接位于 Release 根
+            Copy-Item "$root\lonisle_client.exe" $stage -Force
+            Copy-Item "$root\*.dll" $stage -Force
+            if (Test-Path "$root\data") { Copy-Item "$root\data" "$stage\data" -Recurse -Force }
+          }
+          Compress-Archive -Path $stage -DestinationPath dist/lonisle_client-${{ matrix.platform }}.zip -Force
 
       - name: 打包产物（Linux）
         if: matrix.platform == 'linux-x64'
