@@ -40,21 +40,32 @@ struct VideoGrant {
 }
 
 /// LiveKit 服务端 REST API 认证 claims（管理型，非加入房间）。
+///
+/// 注意（F-AV-COUNT 实测校准）：必须与官方 SDK 一致——
+/// - **不带 `sub`**：带 `sub` 会被 LiveKit 识别为用户 Token，服务端权限全部失效（permissions denied）
+/// - 权限放在 **`video` grant** 下（与加入 Token 同结构），`roomAdmin`/`roomList` 均为 bool
 #[derive(Serialize)]
 struct ApiClaims {
-    /// 签发者与主体均为 API Key（LiveKit 服务端认证约定）
+    /// 签发者（API Key，LiveKit 服务端认证约定）
     iss: String,
-    sub: String,
     /// 过期时间（unix 秒）
     exp: i64,
     /// 签发时间
     nbf: i64,
-    /// 管理权限（查房间/参与者需要 roomList）
-    grants: ApiGrant,
+    /// 服务端 API 权限（video grant）
+    #[serde(rename = "video")]
+    video: ApiVideoGrant,
 }
 
 #[derive(Serialize)]
-struct ApiGrant {
+struct ApiVideoGrant {
+    /// 管理房间（ListParticipants 等参与者接口必需）
+    #[serde(rename = "roomAdmin")]
+    room_admin: bool,
+    /// 目标房间名（实测校准：仅 roomAdmin 会被该版本 LiveKit 判 permissions denied，
+    /// 必须同时指定 `room` 才可 ListParticipants，与官方 SDK 的 authHeader 一致）
+    room: String,
+    /// 列出房间（ListRooms）
     #[serde(rename = "roomList")]
     room_list: bool,
 }
@@ -108,26 +119,29 @@ pub async fn count_room_participants(
     };
     let rest_base = rest_base.trim_end_matches('/');
 
-    // 服务端认证 JWT：iss=sub=api_key，30s 有效
+    // 服务端认证 JWT：iss=api_key，30s 有效；不带 sub、权限放 video grant，
+    // 且必须带 room 指定目标房间（F-AV-COUNT 实测校准，与官方 SDK authHeader 一致）
     let now = lonisle_core::device::current_unix_time();
     let claims = ApiClaims {
         iss: api_key.to_string(),
-        sub: api_key.to_string(),
         exp: now + 30,
-        nbf: now - 10,
-        grants: ApiGrant { room_list: true },
+        nbf: now - 60, // 对齐官方 SDK 默认（60s 时钟偏差余量）
+        video: ApiVideoGrant {
+            room_admin: true,
+            room: room.to_string(),
+            room_list: true,
+        },
     };
     let token =
         encode(&Header::default(), &claims, &EncodingKey::from_secret(api_secret.as_bytes()))
             .map_err(|e| anyhow::anyhow!("签发 LiveKit API Token 失败：{e}"))?;
 
-    let url = format!(
-        "{rest_base}/twirp/livekit.RoomService/ListParticipants?room={}",
-        percent_encoding::utf8_percent_encode(room, percent_encoding::NON_ALPHANUMERIC)
-    );
+    let url = format!("{rest_base}/twirp/livekit.RoomService/ListParticipants");
     let resp = reqwest::Client::new()
-        .get(&url)
+        .post(&url)
         .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({ "room": room }))
         .send()
         .await
         .map_err(|e| anyhow::anyhow!("请求 LiveKit 失败（{url}）：{e}"))?

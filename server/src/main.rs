@@ -414,8 +414,7 @@ fn restore_keypair(
 fn spawn_live_participants_loop(state: Arc<AppState>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
-        // 首次立即执行，避免启动后 15s 内人数为空
-        interval.tick().await;
+        // tokio interval 首次 tick 立即返回：进入循环即执行第一次统计，之后每 15s 一次
         loop {
             interval.tick().await;
             if let Err(e) = update_live_participants(&state).await {
