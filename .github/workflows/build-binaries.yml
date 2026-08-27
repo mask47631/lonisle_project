@@ -12,7 +12,8 @@
 #       Linux ARM64   → gcc-aarch64-linux-gnu 交叉编译
 #       macOS ARM64   → 原生编译（Apple Silicon runner）
 #       macOS x86_64  → clang 交叉编译（arm64 runner 上交叉）
-#   - 产物打包 zip 上传为 Actions Artifact；推送 v* tag 时自动发布 GitHub Release
+#   - 产物为裸二进制（不打压缩包）：按 <服务>-<目标平台> 命名上传 Artifact；
+#     推送 v* tag 时合并发布为 GitHub Release 资产
 #
 # 触发方式：
 #   1. 手动触发：Actions 页面 → 本 workflow → Run workflow
@@ -100,35 +101,35 @@ jobs:
       - name: 编译 ${{ matrix.service }}
         run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.service }}
 
-      - name: 打包产物（Windows）
+      # 产物不打包：直接上传裸二进制（Linux/macOS 下载后本就需 chmod +x，
+      # zip 仅剩保存执行位的用途，统一省略）；文件名带目标平台避免合并时冲突
+      - name: 整理产物（Windows）
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          $zip = "dist/${{ matrix.service }}-${{ matrix.target }}.zip"
-          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.service }}.exe" -DestinationPath $zip
-          "ZIP=$zip" >> $env:GITHUB_ENV
+          $dest = "dist/${{ matrix.service }}-${{ matrix.target }}.exe"
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.service }}.exe" $dest
+          "BIN=$dest" >> $env:GITHUB_ENV
 
-      - name: 打包产物（Linux / macOS）
+      - name: 整理产物（Linux / macOS）
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          zip="dist/${{ matrix.service }}-${{ matrix.target }}.zip"
-          cd "target/${{ matrix.target }}/release"
-          zip -q "../../../$zip" "${{ matrix.service }}"
-          cd - >/dev/null
-          echo "ZIP=$zip" >> "$GITHUB_ENV"
+          dest="dist/${{ matrix.service }}-${{ matrix.target }}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.service }}" "$dest"
+          echo "BIN=$dest" >> "$GITHUB_ENV"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.service }}-${{ matrix.target }}
-          path: ${{ env.ZIP }}
+          path: ${{ env.BIN }}
           if-no-files-found: error
 
-  # 推送 v* tag 时，将全部 12 个 zip 合并发布为 GitHub Release
+  # 推送 v* tag 时，将全部 12 个裸二进制合并发布为 GitHub Release
   release:
     name: 发布 GitHub Release
     if: startsWith(github.ref, 'refs/tags/')
@@ -146,10 +147,11 @@ jobs:
       - name: 整理产物目录
         run: |
           mkdir -p dist
-          cp artifacts/*.zip dist/
+          # Artifact 内文件已带目标平台名（Windows 为 .exe），直接收集
+          cp artifacts/* dist/
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: dist/*
           generate_release_notes: true

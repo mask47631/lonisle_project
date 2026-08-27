@@ -162,22 +162,22 @@ cargo test
 触发方式：
 
 - **手动**：仓库 Actions 页面 → 本 workflow → Run workflow
-- **发布**：推送 `v*` tag（如 `git tag v0.1.0 && git push origin v0.1.0`），构建后自动打包 12 个 zip 并发布 GitHub Release
+- **发布**：推送 `v*` tag（如 `git tag v0.1.0 && git push origin v0.1.0`），构建后自动将 12 个二进制发布为 GitHub Release
 
-产物命名：`lonisle-server-<target>.zip` / `lonisle-push-<target>.zip`（zip 内为单个可执行文件，Web 资源已通过 rust-embed 内嵌）。
+产物命名：`lonisle-server-<target>[-.exe]` / `lonisle-push-<target>[-.exe]`（裸二进制不打压缩包，Web 资源已通过 rust-embed 内嵌）。
 
 > 注：`server/build.rs` 与 `push/build.rs` 使用纯 Rust 生成版本号（UTC 时间 `YYYYMMDDHHMM`），不再依赖 `date` 命令，Windows 亦可编译。
 
 ### 使用编译产物启动（二进制部署）
 
-无需安装 Rust 环境。从 **GitHub Release**（推送 `v*` tag 自动生成）或 **Actions Artifacts**（手动触发后下载）获取对应平台的 zip，解压即用——zip 内为单个可执行文件，Web 资源已通过 rust-embed 内嵌。
+无需安装 Rust 环境。从 **GitHub Release**（推送 `v*` tag 自动生成）或 **Actions Artifacts**（手动触发后下载）获取对应平台的可执行文件——单文件直接下载即用，Web 资源已通过 rust-embed 内嵌。
 
 ```bash
-# Linux / macOS：解压并赋执行权限
-unzip lonisle-server-<target>.zip
-chmod +x lonisle-server
+# Linux / macOS：下载后赋执行权限运行
+chmod +x lonisle-server-x86_64-unknown-linux-gnu
+mv lonisle-server-x86_64-unknown-linux-gnu lonisle-server  # 可选：重命名
 
-# Windows：解压 lonisle-server.exe 后可直接运行（cmd / PowerShell）
+# Windows：下载 lonisle-server-<target>.exe 后可直接运行（cmd / PowerShell）
 ```
 
 **聊天服务器 lonisle-server**
