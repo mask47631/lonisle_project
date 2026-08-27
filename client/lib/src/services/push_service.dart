@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,8 +14,12 @@ import 'identity_service.dart';
 /// Token 获取：优先 FCM（firebase_messaging），获取失败/未配置时回退 mock。
 /// 免打扰：全局开关（bool），开启后向推送服务上报 muted=true，
 /// 服务器随后静默丢弃对该用户的推送唤醒（push 侧 is_muted 检查）。
-class PushService {
-  PushService._();
+/// 桌面端（macOS）：应用运行中收到新消息且窗口失焦/非当前话题时弹本地通知
+/// （firebase_messaging 不支持 macOS，离线唤醒仍归移动端厂商通道）。
+class PushService with WidgetsBindingObserver {
+  PushService._() {
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   static final PushService instance = PushService._();
 
@@ -181,42 +186,99 @@ class PushService {
 
   /// 前台通知渠道初始化 + FCM 前台消息本地通知
   Future<void> initForegroundNotifications() async {
+    // 本地通知插件：移动端 + macOS 通用（firebase_messaging 不支持 macOS）
     try {
-      // 请求通知权限（Android 13+ / iOS，FCM 接收必需）
+      await _ensureLocalPlugin();
+    } catch (_) {
+      // 初始化失败不影响主功能
+    }
+
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    try {
+      // 请求通知权限（Android 13+ / iOS，FCM 接收必需；
+      // 桌面端跳过——firebase_messaging 无 macOS 实现，调用必抛异常）
       await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
-      final plugin = FlutterLocalNotificationsPlugin();
-      await plugin.initialize(
-        const InitializationSettings(
-          // 通知小图标：专用白色图标（彩色 launcher 图标在通知栏会渲染成白色块）
-          android: AndroidInitializationSettings('ic_notification'),
-          iOS: DarwinInitializationSettings(),
-        ),
-      );
 
       // FCM 前台消息 → 本地通知展示（免内容：仅唤醒提示）
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        plugin.show(
-          message.hashCode,
-          message.notification?.title ?? 'LonIsle',
-          message.notification?.body ?? '你有新消息',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'lonisle_wake',
-              '消息唤醒',
-              channelDescription: '服务器离线消息唤醒通知',
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-            iOS: DarwinNotificationDetails(),
+        showLocalNotification(
+          id: message.hashCode,
+          title: message.notification?.title ?? 'LonIsle',
+          body: message.notification?.body ?? '你有新消息',
+          androidChannel: const AndroidNotificationDetails(
+            'lonisle_wake',
+            '消息唤醒',
+            channelDescription: '服务器离线消息唤醒通知',
+            importance: Importance.high,
+            priority: Priority.high,
           ),
         );
       });
     } catch (_) {
       // 通知初始化失败（未配置 Firebase/权限拒绝）不影响主功能
+    }
+  }
+
+  // ---- 运行中本地通知（桌面端，AppLifecycleState 跟踪窗口焦点） ----
+
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
+  bool _pluginReady = false;
+
+  /// 窗口是否持有焦点（失焦时收到消息才弹横幅，避免正在聊天时打扰）
+  bool appFocused = true;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    appFocused = state == AppLifecycleState.resumed;
+  }
+
+  Future<void> _ensureLocalPlugin() async {
+    if (_pluginReady) return;
+    await _plugin.initialize(const InitializationSettings(
+      // 通知小图标：专用白色图标（彩色 launcher 图标在通知栏会渲染成白色块）
+      android: AndroidInitializationSettings('ic_notification'),
+      iOS: DarwinInitializationSettings(),
+      macOS: DarwinInitializationSettings(),
+    ));
+    _pluginReady = true;
+  }
+
+  /// 弹一条本地通知（移动端 FCM 前台消息与桌面端新消息共用出口）
+  Future<void> showLocalNotification({
+    required int id,
+    required String title,
+    required String body,
+    AndroidNotificationDetails? androidChannel,
+  }) async {
+    try {
+      await _ensureLocalPlugin();
+      await _plugin.show(
+        id,
+        title,
+        body,
+        NotificationDetails(
+          android: androidChannel ??
+              const AndroidNotificationDetails(
+                'lonisle_wake',
+                '消息唤醒',
+                channelDescription: '服务器离线消息唤醒通知',
+                importance: Importance.high,
+                priority: Priority.high,
+              ),
+          iOS: const DarwinNotificationDetails(),
+          macOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentSound: true,
+          ),
+        ),
+      );
+    } catch (_) {
+      // 通知失败静默（macOS 首次未授权等场景）
     }
   }
 }

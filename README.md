@@ -231,6 +231,16 @@ flutter build macos --debug            # macOS 构建
 
 > Android 构建需要 `client/android/app/google-services.json`（Firebase 配置，含 API Key，不入库）。参照同目录 `google-services.json.example` 填写你的 Firebase 项目信息。
 
+> **正式发布前**：推送服务地址默认绑定开发环境（`https://127.0.0.1:8081`），需在 `client/` 下创建私有配置文件（已 gitignore，不入库）并在构建时注入：
+>
+> ```bash
+> cd client
+> cp local_config.json.example local_config.json   # 修改 LONISLE_PUSH_URL 为你的推送服务地址
+> flutter build apk --release --dart-define-from-file=local_config.json
+> ```
+>
+> 所有 `flutter build` / `flutter run` 命令均可加 `--dart-define-from-file=local_config.json`；不加则使用代码内默认值。
+
 ### 协议代码生成
 
 ```bash

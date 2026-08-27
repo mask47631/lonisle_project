@@ -1985,7 +1985,7 @@ class _MessageBubble extends StatelessWidget {
                       const Text('发送失败',
                           style: TextStyle(fontSize: 11, color: LonIsleTheme.red)),
                     ],
-                    if (isSelf && (!message.pending || message.failed)) ...[
+                    if (!message.pending || message.failed) ...[
                       const Spacer(),
                       _MessageOps(sc: sc, message: message),
                     ],
@@ -2664,18 +2664,41 @@ class _ReactionBar extends StatelessWidget {
   }
 }
 
-/// 消息操作（编辑/删除）
+/// 消息操作（回复/编辑/删除）
 class _MessageOps extends StatelessWidget {
   final ServerConnection sc;
   final ChatMessage message;
 
+  /// 编辑/删除时间窗口（发送后 2 分钟内，超时不显示入口）
+  static const _editDeleteWindow = Duration(minutes: 2);
+
   const _MessageOps({required this.sc, required this.message});
+
+  /// 仅自己的消息且在 2 分钟窗口内可编辑/删除
+  bool get _canModify {
+    if (message.authorId != sc.selfMember?.userId) return false;
+    final sentAtMs = message.serverTs * 1000;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    return nowMs - sentAtMs <= _editDeleteWindow.inMilliseconds;
+  }
+
+  /// 管理员/服主可删除任何消息（含自己的超窗消息），不受 2 分钟限制
+  bool get _canDelete => sc.isAdmin || _canModify;
 
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_horiz, color: LonIsleTheme.textDim, size: 16),
       onSelected: (v) async {
+        // 防御：编辑仅限 2 分钟窗口；管理员删除不受窗口限制
+        if ((v == 'edit' || v == 'delete') &&
+            !_canModify &&
+            !(v == 'delete' && sc.isAdmin)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('发送已超过 2 分钟，无法编辑或删除')),
+          );
+          return;
+        }
         if (v == 'edit') {
           final controller = TextEditingController(text: message.content);
           final newText = await showDialog<String>(
@@ -2751,9 +2774,12 @@ class _MessageOps extends StatelessWidget {
           const PopupMenuItem(value: 'retry', child: Text('重试发送')),
           const PopupMenuItem(value: 'discard', child: Text('丢弃消息')),
         ] else ...[
+          // 回复对所有消息开放；编辑仅限自己 2 分钟内；删除对自己 2 分钟内或管理员/服主不限时（服务端本就允许 admin 删他人消息）
           const PopupMenuItem(value: 'reply', child: Text('回复')),
-          const PopupMenuItem(value: 'edit', child: Text('编辑')),
-          const PopupMenuItem(value: 'delete', child: Text('删除')),
+          if (_canModify)
+            const PopupMenuItem(value: 'edit', child: Text('编辑')),
+          if (_canDelete)
+            const PopupMenuItem(value: 'delete', child: Text('删除')),
         ],
         // 自己的消息且服务端解析出 @提及时可查看已读（F-MSG-10）
         if (message.authorId == sc.selfMember?.userId && message.mentions.isNotEmpty)

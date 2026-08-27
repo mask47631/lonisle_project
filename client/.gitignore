@@ -44,5 +44,13 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# 正式签名密钥（泄露 = 任何人可以冒充你的应用发版）
+key.properties
+*.jks
+*.keystore
+
+# 私有构建配置（推送服务地址等，配合 --dart-define-from-file 使用）
+/local_config.json
+
 # Widget Preview related
 .widget_preview/

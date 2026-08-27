@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,7 @@ import '../services/e2ee_service.dart';
 import '../services/identity_service.dart';
 import '../services/local_store.dart';
 import '../services/media_service.dart';
+import '../services/push_service.dart';
 
 /// 单服务器连接封装：独立的连接实例 + 该服务器的话题/消息/成员/未读状态。
 class ServerConnection extends ChangeNotifier {
@@ -329,9 +331,16 @@ class ServerConnection extends ChangeNotifier {
     }
 
     if (msg.topicId != currentTopicId) {
-      // 非当前话题：增加未读
+      // 非当前话题：增加未读 + 失焦时本地通知（桌面端）
       _local.incrementUnread(serverId, msg.topicId);
       _reloadUnread();
+      _maybeDesktopNotify(
+        String.fromCharCodes(msg.authorId),
+        msg.authorName,
+        msg.topicId,
+        msg.content.text,
+        msg.content.hasAttachment(),
+      );
       return;
     }
 
@@ -395,6 +404,14 @@ class ServerConnection extends ChangeNotifier {
     messages.add(m);
     // @我 → 通知中心刷新（F-UI-3）
     if (m.mentions.isNotEmpty) _notifyChanged();
+    // 当前话题新消息：仅失焦时提醒（桌面端，正在聊天不打扰）
+    _maybeDesktopNotify(
+      m.authorId,
+      m.authorName,
+      m.topicId,
+      m.content,
+      m.attachment != null,
+    );
     _local.upsertMessage(m);
     _cursor = m.seq;
     _local.writeCursor(serverId, currentTopicId, _cursor);
@@ -405,6 +422,39 @@ class ServerConnection extends ChangeNotifier {
     messages = await _local.loadMessages(serverId, currentTopicId);
     notifyListeners();
   }
+
+  /// 桌面端（macOS）运行中本地通知：
+  /// 仅在窗口失焦时提醒（正在聊天不打扰）；自己的消息不提醒。
+  /// 非当前话题消息即使聚焦也弹（用户看不到该话题，与未读行为一致）。
+  void _maybeDesktopNotify(
+    String authorId,
+    String authorName,
+    String topicId,
+    String text,
+    bool hasAttachment,
+  ) {
+    if (!Platform.isMacOS) return;
+    if (authorId == selfMember?.userId) return;
+
+    final focusLost = !PushService.instance.appFocused;
+    final otherTopic = topicId != currentTopicId;
+    if (!focusLost && !otherTopic) return;
+
+    final topicName = topics
+        .where((t) => t.topicId == topicId)
+        .map((t) => t.name)
+        .firstOrNull;
+    final snippet = text.isNotEmpty
+        ? (text.length > 40 ? '${text.substring(0, 40)}…' : text)
+        : '[附件]';
+    PushService.instance.showLocalNotification(
+      id: msgHash(topicId, authorId, snippet),
+      title: '$serverName${topicName == null ? '' : ' · $topicName'}',
+      body: '$authorName：$snippet',
+    );
+  }
+
+  static int msgHash(String a, String b, String c) => Object.hash(a, b, c);
 
   // ---- 离线缓存（F-MSG-3 本地优先渲染）----
 
@@ -473,9 +523,14 @@ class ServerConnection extends ChangeNotifier {
     final localIds = (await _local.loadMessages(serverId, currentTopicId))
         .map((m) => m.msgId)
         .toSet();
-    final incoming = resp.messages
-        .where((m) => !m.deleted || localIds.contains(m.msgId))
-        .map((m) => ChatMessage(
+    final incoming = resp.messages.where((m) {
+      final known = localIds.contains(m.msgId);
+      // 编辑/删除事件的 seq 是服务端新分配的事件序号：本地在上一会话已按
+      // 原消息位置就地标记（markEdited/markDeleted），若用新 seq REPLACE 落库
+      // 会破坏原行的 seq 导致墓碑"移动"到列表末尾——已知消息的事件一律跳过
+      if ((m.edited || m.deleted) && known) return false;
+      return !m.deleted || known;
+    }).map((m) => ChatMessage(
           seq: m.seq.toInt(),
           serverId: serverId,
           topicId: m.topicId,
