@@ -10,7 +10,7 @@ use lonisle_core::identity::user_id_from_pubkey;
 use sha2::Digest as _;
 use tracing::{info, warn};
 
-use lonisle_server::storage::{JoinStrategy, SqliteStorage, Storage};
+use lonisle_server::storage::{JoinStrategy, SqliteStorage, Storage, TopicType};
 use lonisle_server::ws::AppState;
 
 /// LonIsle 聊天服务器命令行参数
@@ -234,6 +234,9 @@ async fn main() -> anyhow::Result<()> {
     let app = lonisle_server::admin::build_router(state.clone())
         .merge(lonisle_server::attachments::build_attachments_router(state.clone()));
 
+    // 后台任务：定时刷新音视频话题房间人数（F-AV-COUNT）
+    spawn_live_participants_loop(state.clone());
+
     let addr: SocketAddr = args.listen.parse().context("无效的监听地址")?;
     info!(%addr, fingerprint = %tls.fingerprint, "聊天服务器已启动（TLS）");
 
@@ -402,6 +405,87 @@ fn restore_keypair(
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+/// 后台任务：每 15s 查询音视频话题房间人数并缓存，变化时广播 TOPIC_UPDATED（F-AV-COUNT）。
+/// 客户端收到 TOPIC_UPDATED 后自动重新拉取话题列表，话题名后的在线人数随之刷新。
+fn spawn_live_participants_loop(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+        // 首次立即执行，避免启动后 15s 内人数为空
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            if let Err(e) = update_live_participants(&state).await {
+                tracing::warn!(error = %e, "刷新 LiveKit 房间人数失败");
+            }
+        }
+    });
+}
+
+/// 查询所有音视频话题房间人数，与缓存不一致时更新并广播话题变更。
+async fn update_live_participants(state: &Arc<AppState>) -> anyhow::Result<()> {
+    let meta = state.storage.get_server_meta().await?;
+    let meta = match meta {
+        Some(m) => m,
+        None => return Ok(()),
+    };
+    // LiveKit 未配置（url/key/secret 缺一）时跳过
+    if meta.livekit_url.is_empty()
+        || meta.livekit_api_key.is_empty()
+        || meta.livekit_api_secret.is_empty()
+    {
+        return Ok(());
+    }
+
+    let topics = state.storage.list_topics().await?;
+    let av_topics: Vec<_> = topics
+        .into_iter()
+        .filter(|t| t.topic_type == TopicType::Av)
+        .collect();
+    if av_topics.is_empty() {
+        return Ok(());
+    }
+
+    let mut fresh = std::collections::HashMap::new();
+    for t in &av_topics {
+        match lonisle_server::livekit::count_room_participants(
+            &meta.livekit_url,
+            &meta.livekit_api_key,
+            &meta.livekit_api_secret,
+            &t.topic_id,
+        )
+        .await
+        {
+            Ok(n) => {
+                fresh.insert(t.topic_id.clone(), n);
+            }
+            Err(e) => {
+                tracing::warn!(topic = %t.topic_id, error = %e, "查询房间人数失败");
+            }
+        }
+    }
+
+    // 与缓存比较，有变化才广播（避免 15s 一次无意义推送）
+    let changed = {
+        let cache = state.live_participants.read().await;
+        *cache != fresh
+    };
+    if changed {
+        let mut cache = state.live_participants.write().await;
+        *cache = fresh;
+        drop(cache);
+        use lonisle_core::proto::server_envelope::MsgType as ServerMsgType;
+        let env = lonisle_core::proto::ServerEnvelope {
+            r#type: ServerMsgType::TopicUpdated as i32,
+            request_id: 0,
+            payload: vec![],
+            error: String::new(),
+        };
+        let _ = state.broadcast.send(env);
+        tracing::debug!("音视频话题人数已更新并广播");
     }
     Ok(())
 }

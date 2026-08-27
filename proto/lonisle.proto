@@ -125,6 +125,7 @@ message TopicInfo {
   int32 sort_order = 4;
   TopicType type = 5;              // 话题类型（订阅/普通/音视频）
   TopicPermission permission = 6;  // 权限（公开/只读）
+  int32 live_participants = 7;     // 音视频话题房间内人数（非音视频话题恒 0，服务端定时刷新）
 }
 
 // 客户端 → 服务器：申请加入音视频话题（AV，LiveKit）

@@ -1515,6 +1515,41 @@ class _TopicItem extends StatelessWidget {
                 ),
               ),
             ),
+            // 音视频话题房间在线人数（F-AV-COUNT，话题名后展示，不在房间也可见）
+            if (isAV && topic.liveParticipants > 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: LonIsleTheme.bg3,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.graphic_eq,
+                        size: 12,
+                        color: active
+                            ? LonIsleTheme.textWhite
+                            : LonIsleTheme.textDim,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${topic.liveParticipants}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: active
+                              ? LonIsleTheme.textWhite
+                              : LonIsleTheme.textDim,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             if (isAnnouncement)
               const Icon(Icons.star, size: 14, color: LonIsleTheme.amber),
             // 话题级未读角标（F-UI-4）

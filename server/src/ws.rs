@@ -47,6 +47,8 @@ pub struct AppState {
     pub tls_fingerprint: String,
     /// 发言频率限速：user_id -> (窗口起始时间戳, 窗口内计数)（P1）
     pub speak_limits: Mutex<std::collections::HashMap<String, (i64, u32)>>,
+    /// 音视频话题房间人数缓存：topic_id -> 人数（后台任务定时刷新，F-AV-COUNT）
+    pub live_participants: tokio::sync::RwLock<std::collections::HashMap<String, usize>>,
 }
 
 impl AppState {
@@ -63,6 +65,7 @@ impl AppState {
             admin_token: String::new(),
             tls_fingerprint: String::new(),
             speak_limits: Mutex::new(std::collections::HashMap::new()),
+            live_participants: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         }
     }
 
@@ -606,7 +609,14 @@ async fn join_success_response(
     });
 
     let topics = state.storage.list_topics().await?;
-    let topic_infos: Vec<proto::TopicInfo> = topics.into_iter().map(topic_to_proto).collect();
+    let live = state.live_participants.read().await;
+    let topic_infos: Vec<proto::TopicInfo> = topics
+        .into_iter()
+        .map(|t| {
+            let n = live.get(&t.topic_id).copied().unwrap_or(0);
+            topic_to_proto(t, n)
+        })
+        .collect();
 
     let resp = JoinResponse {
         accepted: true,
@@ -660,7 +670,7 @@ fn server_info(state: &Arc<AppState>, meta: &storage::ServerMeta) -> proto::Serv
     }
 }
 
-fn topic_to_proto(t: storage::Topic) -> proto::TopicInfo {
+fn topic_to_proto(t: storage::Topic, live_participants: usize) -> proto::TopicInfo {
     proto::TopicInfo {
         topic_id: t.topic_id,
         name: t.name,
@@ -675,6 +685,7 @@ fn topic_to_proto(t: storage::Topic) -> proto::TopicInfo {
             TopicPermission::Readonly => proto::TopicPermission::Readonly as i32,
             _ => proto::TopicPermission::Public as i32,
         },
+        live_participants: live_participants as i32,
     }
 }
 
@@ -1347,7 +1358,14 @@ async fn handle_list_members(state: &Arc<AppState>) -> anyhow::Result<ServerEnve
 
 async fn handle_list_topics(state: &Arc<AppState>) -> anyhow::Result<ServerEnvelope> {
     let topics = state.storage.list_topics().await?;
-    let infos: Vec<proto::TopicInfo> = topics.into_iter().map(topic_to_proto).collect();
+    let live = state.live_participants.read().await;
+    let infos: Vec<proto::TopicInfo> = topics
+        .into_iter()
+        .map(|t| {
+            let n = live.get(&t.topic_id).copied().unwrap_or(0);
+            topic_to_proto(t, n)
+        })
+        .collect();
     let resp = proto::TopicListResponse { topics: infos };
     Ok(ServerEnvelope {
         r#type: ServerMsgType::TopicListResponse as i32,

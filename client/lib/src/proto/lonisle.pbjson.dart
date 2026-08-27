@@ -383,6 +383,13 @@ const TopicInfo$json = {
       '6': '.lonisle.TopicPermission',
       '10': 'permission'
     },
+    {
+      '1': 'live_participants',
+      '3': 7,
+      '4': 1,
+      '5': 5,
+      '10': 'liveParticipants'
+    },
   ],
 };
 
@@ -391,7 +398,8 @@ final $typed_data.Uint8List topicInfoDescriptor = $convert.base64Decode(
     'CglUb3BpY0luZm8SGQoIdG9waWNfaWQYASABKAlSB3RvcGljSWQSEgoEbmFtZRgCIAEoCVIEbm'
     'FtZRIgCgtkZXNjcmlwdGlvbhgDIAEoCVILZGVzY3JpcHRpb24SHQoKc29ydF9vcmRlchgEIAEo'
     'BVIJc29ydE9yZGVyEiYKBHR5cGUYBSABKA4yEi5sb25pc2xlLlRvcGljVHlwZVIEdHlwZRI4Cg'
-    'pwZXJtaXNzaW9uGAYgASgOMhgubG9uaXNsZS5Ub3BpY1Blcm1pc3Npb25SCnBlcm1pc3Npb24=');
+    'pwZXJtaXNzaW9uGAYgASgOMhgubG9uaXNsZS5Ub3BpY1Blcm1pc3Npb25SCnBlcm1pc3Npb24S'
+    'KwoRbGl2ZV9wYXJ0aWNpcGFudHMYByABKAVSEGxpdmVQYXJ0aWNpcGFudHM=');
 
 @$core.Deprecated('Use joinAVRequestDescriptor instead')
 const JoinAVRequest$json = {

@@ -1,7 +1,8 @@
-//! LiveKit Token 签发（音视频话题，F-TOPIC-7）
+//! LiveKit Token 签发（音视频话题，F-TOPIC-7）+ 房间人数查询（F-AV-COUNT）
 //!
 //! 使用 jsonwebtoken 签发 HS256 JWT（LiveKit 自签 Token）。
 //! 房间名 = topic_id；Token 含 video grant（房间加入权限）+ 用户身份 + 短时过期。
+//! 房间人数经 LiveKit REST API（twirp）查询，供话题列表展示。
 
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::Serialize;
@@ -38,6 +39,26 @@ struct VideoGrant {
     can_subscribe: bool,
 }
 
+/// LiveKit 服务端 REST API 认证 claims（管理型，非加入房间）。
+#[derive(Serialize)]
+struct ApiClaims {
+    /// 签发者与主体均为 API Key（LiveKit 服务端认证约定）
+    iss: String,
+    sub: String,
+    /// 过期时间（unix 秒）
+    exp: i64,
+    /// 签发时间
+    nbf: i64,
+    /// 管理权限（查房间/参与者需要 roomList）
+    grants: ApiGrant,
+}
+
+#[derive(Serialize)]
+struct ApiGrant {
+    #[serde(rename = "roomList")]
+    room_list: bool,
+}
+
 /// 签发 LiveKit 加入 Token。
 /// `api_key`：LiveKit API Key；`api_secret`：LiveKit API Secret；
 /// `room`：房间名（= topic_id）；`user_id`：用户身份；`ttl_secs`：有效期（秒）。
@@ -65,6 +86,58 @@ pub fn issue_join_token(
 
     let key = EncodingKey::from_secret(api_secret.as_bytes());
     encode(&Header::default(), &claims, &key).map_err(|e| e.to_string())
+}
+
+/// 查询 LiveKit 房间当前参与者人数（F-AV-COUNT，话题列表展示用）。
+///
+/// `host`：LiveKit 服务地址（`ws://host:7880` / `wss://...` / `http(s)://...` 均可，自动归一化）；
+/// 经 `twirp/livekit.RoomService/ListParticipants` 拉取参与者列表计数。
+pub async fn count_room_participants(
+    host: &str,
+    api_key: &str,
+    api_secret: &str,
+    room: &str,
+) -> anyhow::Result<usize> {
+    // 归一化为 REST base：ws:// → http://、wss:// → https://
+    let rest_base = if host.starts_with("wss://") {
+        host.replacen("wss://", "https://", 1)
+    } else if host.starts_with("ws://") {
+        host.replacen("ws://", "http://", 1)
+    } else {
+        host.to_string()
+    };
+    let rest_base = rest_base.trim_end_matches('/');
+
+    // 服务端认证 JWT：iss=sub=api_key，30s 有效
+    let now = lonisle_core::device::current_unix_time();
+    let claims = ApiClaims {
+        iss: api_key.to_string(),
+        sub: api_key.to_string(),
+        exp: now + 30,
+        nbf: now - 10,
+        grants: ApiGrant { room_list: true },
+    };
+    let token =
+        encode(&Header::default(), &claims, &EncodingKey::from_secret(api_secret.as_bytes()))
+            .map_err(|e| anyhow::anyhow!("签发 LiveKit API Token 失败：{e}"))?;
+
+    let url = format!(
+        "{rest_base}/twirp/livekit.RoomService/ListParticipants?room={}",
+        percent_encoding::utf8_percent_encode(room, percent_encoding::NON_ALPHANUMERIC)
+    );
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("请求 LiveKit 失败（{url}）：{e}"))?
+        .error_for_status()
+        .map_err(|e| anyhow::anyhow!("LiveKit 返回错误（{url}）：{e}"))?;
+    let json: serde_json::Value = resp.json().await?;
+    Ok(json["participants"]
+        .as_array()
+        .map(|a| a.len())
+        .unwrap_or(0))
 }
 
 #[cfg(test)]

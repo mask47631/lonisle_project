@@ -1044,6 +1044,7 @@ class TopicInfo extends $pb.GeneratedMessage {
     $core.int? sortOrder,
     TopicType? type,
     TopicPermission? permission,
+    $core.int? liveParticipants,
   }) {
     final result = create();
     if (topicId != null) result.topicId = topicId;
@@ -1052,6 +1053,7 @@ class TopicInfo extends $pb.GeneratedMessage {
     if (sortOrder != null) result.sortOrder = sortOrder;
     if (type != null) result.type = type;
     if (permission != null) result.permission = permission;
+    if (liveParticipants != null) result.liveParticipants = liveParticipants;
     return result;
   }
 
@@ -1076,6 +1078,7 @@ class TopicInfo extends $pb.GeneratedMessage {
         enumValues: TopicType.values)
     ..aE<TopicPermission>(6, _omitFieldNames ? '' : 'permission',
         enumValues: TopicPermission.values)
+    ..aI(7, _omitFieldNames ? '' : 'liveParticipants')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1149,6 +1152,15 @@ class TopicInfo extends $pb.GeneratedMessage {
   $core.bool hasPermission() => $_has(5);
   @$pb.TagNumber(6)
   void clearPermission() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.int get liveParticipants => $_getIZ(6);
+  @$pb.TagNumber(7)
+  set liveParticipants($core.int value) => $_setSignedInt32(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasLiveParticipants() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearLiveParticipants() => $_clearField(7);
 }
 
 /// 客户端 → 服务器：申请加入音视频话题（AV，LiveKit）
