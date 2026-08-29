@@ -37,6 +37,15 @@ import 'inline_voice_player.dart';
 
 /// 主界面：类 Discord 三栏布局
 /// 左：多服务器栏 | 中：话题/成员栏 | 右：消息区
+/// 布局判定：移动端按屏幕短边（横竖屏行为一致——若按逻辑宽度，横屏是否
+/// 达到阈值取决于各机型逻辑密度与系统显示缩放，会出现"有的机型横屏变 PC
+/// 布局、有的不变"的不一致）；桌面端按窗口宽度（窄窗口沿用手机布局）。
+bool _useMobileLayout(BuildContext context) {
+  final size = MediaQuery.of(context).size;
+  if (Platform.isAndroid || Platform.isIOS) return size.shortestSide < 600;
+  return size.width < 600;
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -96,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (sc == null) return const _EmptyHome();
 
     // 移动端窄屏：单栏布局（Drawer 切服务器 + AppBar 切话题）
-    if (MediaQuery.of(context).size.width < 600) {
+    if (_useMobileLayout(context)) {
       return ListenableBuilder(
         listenable: sc,
         builder: (context, _) => _buildMobile(context, sc),
@@ -212,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.pop(drawerCtx);
                     // 移动端：底部弹层（大尺寸 ListTile，手机易点击）；
                     // 桌面端：沿用 SimpleDialog（紧凑，鼠标操作方便）
-                    if (MediaQuery.of(context).size.width < 600) {
+                    if (_useMobileLayout(context)) {
                       _showMobileServerMenu(context, sc);
                     } else {
                       _showServerMenu(context, sc);
