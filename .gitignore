@@ -57,6 +57,9 @@ Thumbs.db
 /.codebuddy/
 /.workbuddy/
 
+# 开发测试云服务器工作目录（SSH 配置/部署脚本/运行数据，勿提交）
+/devserver/
+
 # 开发内部文档（需求/概览，勿公开）
 /REQUIREMENTS.md
 /overview.md
