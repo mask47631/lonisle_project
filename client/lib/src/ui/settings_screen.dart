@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../config.dart';
+import '../services/keepalive_service.dart';
 import '../services/identity_service.dart';
 import '../services/media_service.dart';
 import '../services/push_service.dart';
@@ -21,6 +24,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   double _audioThreshold = 0;
   final Map<String, bool> _mentionRead = {}; // serverId → 开关
   bool _dnd = false; // 免打扰（F-RATE-7）
+  bool _keepalive = false; // Android 后台保活
+  bool _batteryOk = true; // 是否已豁免电池优化
 
   // 推送服务信息（F-PUSH-2 展示）
   bool _pushOnline = false;
@@ -45,12 +50,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       flags[sc.serverId] = await sc.mentionReadEnabled();
     }
     final dnd = await PushService.instance.dndEnabled();
+    final keepalive = Platform.isAndroid
+        ? KeepAliveService.instance.enabled
+        : false;
+    final batteryOk = Platform.isAndroid
+        ? await KeepAliveService.instance.isIgnoringBatteryOptimizations()
+        : true;
     setState(() {
       _imageThreshold = MediaService.instance.threshold('image');
       _videoThreshold = MediaService.instance.threshold('video');
       _audioThreshold = MediaService.instance.threshold('audio');
       _mentionRead.addAll(flags);
       _dnd = dnd;
+      _keepalive = keepalive;
+      _batteryOk = batteryOk;
     });
     _loadPushInfo();
   }
@@ -180,6 +193,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 24),
+          // Android 后台保活（无 FCM 设备的离线接收）
+          if (Platform.isAndroid) ...[
+            Card(
+              color: LonIsleTheme.bg2,
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              child: SwitchListTile(
+                title: const Text('后台保活接收消息',
+                    style:
+                        TextStyle(color: LonIsleTheme.textWhite, fontSize: 14)),
+                subtitle: Text(
+                  _keepalive && !_batteryOk
+                      ? '已开启，但未豁免电池优化——部分机型会强制杀后台，建议在系统设置中允许 LonIsle 后台运行'
+                      : '开启后通知栏将常驻一条"保持在线"通知，应用在后台也持续接收消息（不受 FCM 影响，耗电略增）',
+                  style: const TextStyle(color: LonIsleTheme.textDim, fontSize: 11),
+                ),
+                value: _keepalive,
+                activeThumbColor: LonIsleTheme.primary,
+                onChanged: (v) async {
+                  await KeepAliveService.instance.setEnabled(v);
+                  if (v) {
+                    // 首次开启：稍后重查豁免状态（系统弹窗回来后）
+                    await Future.delayed(const Duration(seconds: 2));
+                  }
+                  final batteryOk = Platform.isAndroid
+                      ? await KeepAliveService.instance
+                          .isIgnoringBatteryOptimizations()
+                      : true;
+                  setState(() {
+                    _keepalive = v;
+                    _batteryOk = batteryOk;
+                  });
+                },
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
           const Text(
             '@提及已读回执（按服务器独立开关，默认关闭）',
             style: TextStyle(color: LonIsleTheme.textDim, fontSize: 13),

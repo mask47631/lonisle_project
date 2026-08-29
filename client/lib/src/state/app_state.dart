@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/av_session.dart';
 import '../services/connection_service.dart';
 import '../services/identity_service.dart';
+import '../services/keepalive_service.dart';
 import '../services/local_store.dart';
 import '../services/push_service.dart';
 import '../services/tofu_http.dart';
@@ -89,6 +90,8 @@ class AppState extends ChangeNotifier {
       PushService.instance.initForegroundNotifications();
       // 启动后向推送服务注册设备 Token（F-PUSH-2，异步不阻塞）
       PushService.instance.register();
+      // Android 后台保活（用户在设置中开启后，退后台启动前台服务）
+      KeepAliveService.instance.init();
       // 恢复已加入的服务器（逐个重连，失败的服务器走断线重连退避）
       await _restoreServers();
     }

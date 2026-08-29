@@ -14,6 +14,7 @@ import '../services/e2ee_service.dart';
 import '../services/identity_service.dart';
 import '../services/local_store.dart';
 import '../services/media_service.dart';
+import '../services/keepalive_service.dart';
 import '../services/push_service.dart';
 
 /// 单服务器连接封装：独立的连接实例 + 该服务器的话题/消息/成员/未读状态。
@@ -334,7 +335,7 @@ class ServerConnection extends ChangeNotifier {
       // 非当前话题：增加未读 + 失焦时本地通知（桌面端）
       _local.incrementUnread(serverId, msg.topicId);
       _reloadUnread();
-      _maybeDesktopNotify(
+      _maybeLocalNotify(
         String.fromCharCodes(msg.authorId),
         msg.authorName,
         msg.topicId,
@@ -405,7 +406,7 @@ class ServerConnection extends ChangeNotifier {
     // @我 → 通知中心刷新（F-UI-3）
     if (m.mentions.isNotEmpty) _notifyChanged();
     // 当前话题新消息：仅失焦时提醒（桌面端，正在聊天不打扰）
-    _maybeDesktopNotify(
+    _maybeLocalNotify(
       m.authorId,
       m.authorName,
       m.topicId,
@@ -424,21 +425,26 @@ class ServerConnection extends ChangeNotifier {
   }
 
   /// 桌面端（macOS）运行中本地通知：
-  /// 仅在窗口失焦时提醒（正在聊天不打扰）；自己的消息不提醒。
-  /// 非当前话题消息即使聚焦也弹（用户看不到该话题，与未读行为一致）。
-  void _maybeDesktopNotify(
+  /// 运行中本地通知：
+  /// - macOS：窗口失焦时提醒（正在聊天不打扰）；非当前话题消息即使聚焦也弹
+  /// - Android：后台保活服务运行期间提醒（通知策略与 FCM 唤醒一致）
+  /// 自己的消息不提醒。
+  void _maybeLocalNotify(
     String authorId,
     String authorName,
     String topicId,
     String text,
     bool hasAttachment,
   ) {
-    if (!Platform.isMacOS) return;
+    final keepAliveAndroid =
+        Platform.isAndroid && KeepAliveService.instance.backgroundActive;
+    if (!Platform.isMacOS && !keepAliveAndroid) return;
     if (authorId == selfMember?.userId) return;
 
     final focusLost = !PushService.instance.appFocused;
     final otherTopic = topicId != currentTopicId;
-    if (!focusLost && !otherTopic) return;
+    // macOS：聚焦且当前话题不弹；Android 保活期间按 FCM 唤醒语义逐条提醒
+    if (Platform.isMacOS && !focusLost && !otherTopic) return;
 
     final topicName = topics
         .where((t) => t.topicId == topicId)
