@@ -19,7 +19,8 @@ import '../services/push_service.dart';
 
 /// 单服务器连接封装：独立的连接实例 + 该服务器的话题/消息/成员/未读状态。
 class ServerConnection extends ChangeNotifier {
-  final String serverId;
+  // hello 前为 pending- 占位，握手完成后经 updateServerId 纠正为真实 ID
+  String serverId;
   /// 服务器名称（join/本地记录初始化；SERVER_INFO_UPDATED 事件实时更新）
   String serverName;
   final ConnectionService connection;
@@ -803,6 +804,16 @@ class ServerConnection extends ChangeNotifier {
     final resp = await connection.listMembers();
     members = resp.members;
     _refreshAdmin();
+    notifyListeners();
+  }
+
+  /// hello 握手完成后以服务器真实 ID 纠正占位 ID（pending-host-port）。
+  /// 此前本地缓存/游标按占位 ID 读写（内容为空），纠正后必须重载一次，
+  /// 否则首次加入会话内发的消息落在占位命名空间、重启后"消失"。
+  Future<void> updateServerId(String realId) async {
+    if (serverId == realId) return;
+    serverId = realId;
+    await _restoreLocalCache();
     notifyListeners();
   }
 

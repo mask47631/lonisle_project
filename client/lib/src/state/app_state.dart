@@ -195,6 +195,8 @@ class AppState extends ChangeNotifier {
 
     // 以服务器真实 ID 作为 key
     final realId = connection.serverId.isNotEmpty ? connection.serverId : serverId;
+    // 纠正连接对象内部的占位 ID，并按真实 ID 重载本地缓存（话题/消息/游标）
+    await sc.updateServerId(realId);
     _servers[realId] = sc;
     _activeServerId = realId;
 
