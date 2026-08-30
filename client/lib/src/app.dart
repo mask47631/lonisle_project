@@ -48,9 +48,12 @@ class _LonIsleAppState extends State<LonIsleApp> {
                 final state = AppState.instance;
                 // 有身份且（已完成引导或已加入过服务器）→ 进入主界面；
                 // 否则显示 onboarding（内部处理「生成身份」与「连接服务器」两种状态）
+                // 不能加 const：const 实例在 ListenableBuilder 重建时被判定
+                // 未变化，HomeScreen 整棵子树不重建——切换服务器等 AppState
+                // 级变更（switchServer）会全部"点了没反应"
                 if (state.hasIdentity &&
                     (state.onboardingDone || state.servers.isNotEmpty)) {
-                  return const HomeScreen();
+                  return HomeScreen();
                 }
                 return const OnboardingScreen();
               },
