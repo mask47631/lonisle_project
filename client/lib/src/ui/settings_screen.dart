@@ -229,6 +229,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 24),
           ],
+          const SizedBox(height: 24),
+          // 服务器排序（手动上移/下移，重启保持）
+          if (AppState.instance.servers.length > 1) ...[
+            const Text('服务器排序（上移/下移，影响侧栏与抽屉顺序）',
+                style: TextStyle(color: LonIsleTheme.textDim, fontSize: 13)),
+            const SizedBox(height: 8),
+            for (var i = 0; i < AppState.instance.servers.length; i++)
+              Card(
+                color: LonIsleTheme.bg2,
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                child: ListTile(
+                  dense: true,
+                  leading: CircleAvatar(
+                    backgroundColor: LonIsleTheme.primaryDark,
+                    child: Text(
+                      AppState.instance.servers[i].serverName.isNotEmpty
+                          ? AppState.instance.servers[i].serverName.characters.first
+                              .toUpperCase()
+                          : '?',
+                      style: const TextStyle(
+                          color: LonIsleTheme.textWhite, fontSize: 13),
+                    ),
+                  ),
+                  title: Text(AppState.instance.servers[i].serverName,
+                      style: const TextStyle(
+                          color: LonIsleTheme.textWhite, fontSize: 14)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_upward,
+                            size: 20, color: LonIsleTheme.textDim),
+                        onPressed: i == 0
+                            ? null
+                            : () async {
+                                await AppState.instance.moveServer(
+                                    AppState.instance.servers[i].serverId, -1);
+                                setState(() {});
+                              },
+                        tooltip: '上移',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.arrow_downward,
+                            size: 20, color: LonIsleTheme.textDim),
+                        onPressed: i == AppState.instance.servers.length - 1
+                            ? null
+                            : () async {
+                                await AppState.instance.moveServer(
+                                    AppState.instance.servers[i].serverId, 1);
+                                setState(() {});
+                              },
+                        tooltip: '下移',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+          ],
           const Text(
             '@提及已读回执（按服务器独立开关，默认关闭）',
             style: TextStyle(color: LonIsleTheme.textDim, fontSize: 13),

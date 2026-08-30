@@ -33,8 +33,29 @@ class AppState extends ChangeNotifier {
   /// 当前激活服务器 ID
   String? _activeServerId;
 
-  /// 已连接的服务器列表（保持稳定顺序）
-  List<ServerConnection> get servers => _servers.values.toList();
+  /// 用户手动排序的服务器 ID 序（设置页调整；新加入的追加尾部）
+  List<String> _serverOrder = [];
+  String? _lastActiveServerId; // 重启后回到上次激活的服务器
+  static const _kServerOrder = 'server_order';
+  static const _kLastActiveServer = 'last_active_server';
+
+  /// 已连接的服务器列表（按用户排序；未排序的按加入序追加尾部）
+  List<ServerConnection> get servers {
+    final ordered = <ServerConnection>[];
+    for (final id in _serverOrder) {
+      final s = _servers[id];
+      if (s != null) ordered.add(s);
+    }
+    for (final e in _servers.entries) {
+      if (!_serverOrder.contains(e.key)) ordered.add(e.value);
+    }
+    return ordered;
+  }
+
+  Future<void> _persistServerOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kServerOrder, _serverOrder);
+  }
 
   /// 当前激活服务器
   ServerConnection? get activeServer {
@@ -88,6 +109,8 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     onboardingDone = prefs.getBool('onboarding_done') ?? false;
+    _serverOrder = prefs.getStringList(_kServerOrder) ?? [];
+    _lastActiveServerId = prefs.getString(_kLastActiveServer);
     identity = await _identity.loadIdentity();
     if (identity != null) {
       // 前台通知渠道 + FCM onMessage 监听（app 前台也能收到推送通知）
@@ -158,7 +181,10 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
     }
     if (saved.isNotEmpty && _activeServerId == null) {
-      _activeServerId = _servers.keys.first;
+      // 优先回到上次激活的服务器（不在列表则回退排序首位）
+      final last = _lastActiveServerId;
+      _activeServerId =
+          last != null && _servers.containsKey(last) ? last : _servers.keys.first;
     }
   }
 
@@ -247,6 +273,11 @@ class AppState extends ChangeNotifier {
     await sc.updateServerId(realId);
     _servers[realId] = sc;
     _activeServerId = realId;
+    if (!_serverOrder.contains(realId)) {
+      _serverOrder.add(realId);
+      await _persistServerOrder();
+    }
+    await prefsSetLastActive(realId);
 
     // 持久化已加入的服务器（待审批的先不持久化，审批通过后再存）
     if (!sc.pendingApproval) {
@@ -328,8 +359,31 @@ class AppState extends ChangeNotifier {
   void switchServer(String serverId) {
     if (_servers.containsKey(serverId)) {
       _activeServerId = serverId;
+      prefsSetLastActive(serverId);
       notifyListeners();
     }
+  }
+
+  /// 持久化最后激活的服务器（静默失败无碍）
+  Future<void> prefsSetLastActive(String serverId) async {
+    try {
+      _lastActiveServerId = serverId;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kLastActiveServer, serverId);
+    } catch (_) {}
+  }
+
+  /// 设置页排序：把某服务器在列表中上移（delta=-1）或下移（delta=1）
+  Future<void> moveServer(String serverId, int delta) async {
+    if (!_servers.containsKey(serverId)) return;
+    if (!_serverOrder.contains(serverId)) _serverOrder.add(serverId);
+    final i = _serverOrder.indexOf(serverId);
+    final j = i + delta;
+    if (j < 0 || j >= _serverOrder.length) return;
+    final item = _serverOrder.removeAt(i);
+    _serverOrder.insert(j, item);
+    await _persistServerOrder();
+    notifyListeners();
   }
 
   /// 向所有已连接服务器传播吊销证明（F-DEV-8）。
@@ -355,8 +409,16 @@ class AppState extends ChangeNotifier {
     final sc = _servers.remove(serverId);
     sc?.dispose();
     await LocalStore.instance.removeServer(serverId);
+    _serverOrder.remove(serverId);
+    await _persistServerOrder();
     if (_activeServerId == serverId) {
-      _activeServerId = _servers.keys.isNotEmpty ? _servers.keys.first : null;
+      _activeServerId = _serverOrder.isNotEmpty &&
+              _servers.containsKey(_serverOrder.first)
+          ? _serverOrder.first
+          : (_servers.keys.isNotEmpty ? _servers.keys.first : null);
+      if (_activeServerId != null) {
+        await prefsSetLastActive(_activeServerId!);
+      }
     }
     notifyListeners();
   }
