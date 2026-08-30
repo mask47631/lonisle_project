@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +10,7 @@ import '../services/connection_service.dart';
 import '../services/identity_service.dart';
 import '../services/keepalive_service.dart';
 import '../services/local_store.dart';
+import '../services/media_service.dart';
 import '../services/push_service.dart';
 import '../services/tofu_http.dart';
 import '../theme.dart';
@@ -150,6 +154,7 @@ class AppState extends ChangeNotifier {
           return false;
         });
         _servers[serverId] = sc;
+        unawaited(_syncAvatarToServer(sc));
       } catch (_) {}
     }
     if (saved.isNotEmpty && _activeServerId == null) {
@@ -162,6 +167,49 @@ class AppState extends ChangeNotifier {
     await _identity.createIdentity();
     identity = await _identity.loadIdentity();
     notifyListeners();
+  }
+
+  /// 加入服务器后头像自动同步（F-PROF-7 边界修复）。
+  ///
+  /// att 头像引用是服务器局部资源（附件只存在于上传时的那台服务器），
+  /// 全局身份携带的引用在新服务器不可解析 → 其他端看到 Identicon。
+  /// 取图顺序：本地附件缓存（显示过头像必有）→ 其他已加入服务器逐个尝试；
+  /// 取到后重传到新服务器并设置资料，全部失败则维持 Identicon 回退。
+  Future<void> _syncAvatarToServer(ServerConnection sc) async {
+    try {
+      final identity = await IdentityService.instance.loadIdentity();
+      final seed = identity?.avatarSeed ?? '';
+      if (!seed.startsWith('att:')) return;
+      final attId = seed.substring(4);
+
+      final prefs = await SharedPreferences.getInstance();
+      // 该服务器已同步过同一附件则跳过（避免每次启动重复上传）
+      if (prefs.getString('avatar_synced_${sc.serverId}') == attId) return;
+
+      String? path;
+      final candidates = [sc, ...servers.where((s) => !identical(s, sc))];
+      for (final s in candidates) {
+        try {
+          path = await MediaService.instance.download(attId,
+              serverAddress: '${s.connection.host}:${s.connection.port}');
+          break;
+        } catch (_) {}
+      }
+      if (path == null) return;
+
+      final att = await MediaService.instance.upload(
+        data: await File(path).readAsBytes(),
+        filename: 'avatar.png',
+        msgId: 'avatar-sync-${DateTime.now().microsecondsSinceEpoch}',
+        kind: 'avatar',
+        userId: identity!.userId,
+        serverAddress: '${sc.connection.host}:${sc.connection.port}',
+      );
+      await sc.updateServerProfile(avatar: 'att:${att.attachmentId}');
+      await prefs.setString('avatar_synced_${sc.serverId}', attId);
+    } catch (_) {
+      // 头像同步失败不影响加入流程
+    }
   }
 
   /// 连接并加入一个服务器（返回该服务器连接；若待审批返回 pending 状态）
@@ -208,6 +256,7 @@ class AppState extends ChangeNotifier {
         port: port,
         name: connection.serverName,
       );
+      unawaited(_syncAvatarToServer(sc));
     }
     _syncPushServerIds();
 
