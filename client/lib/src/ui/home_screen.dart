@@ -2801,11 +2801,11 @@ class _MessageOps extends StatelessWidget {
 
 /// 成员头像：avatarRef 为 'att:<附件ID>' 时渲染上传的图片头像（F-PROF-7），
 /// 否则按种子渲染 Identicon 字母头像（F-PROF-1）
-class _Avatar extends StatelessWidget {
+class _Avatar extends StatefulWidget {
   final String seed;
   final double size;
 
-  /// 头像引用：空或种子字符串 → Identicon；'att:<id>' → 服务器上的图片附件
+  /// 头像引用：空或种子字符串 → Identicon；'att:附件ID' → 服务器上的图片附件
   final String avatarRef;
   final String? serverAddress;
 
@@ -2817,37 +2817,81 @@ class _Avatar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    if (avatarRef.startsWith('att:')) {
-      final attachmentId = avatarRef.substring(4);
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(size / 3),
-        child: FutureBuilder<String?>(
-          future: () async {
-            try {
-              return await MediaService.instance
-                  .download(attachmentId, serverAddress: serverAddress);
-            } catch (_) {
-              return null;
-            }
-          }(),
-          builder: (context, snap) {
-            if (snap.hasData && snap.data != null) {
-              return Image.file(
-                File(snap.data!),
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                // 引用在其他服务器不可解析等失败场景：回退 Identicon
-                errorBuilder: (_, __, ___) => _identicon(),
-              );
-            }
-            return _identicon();
-          },
-        ),
-      );
+  State<_Avatar> createState() => _AvatarState();
+}
+
+class _AvatarState extends State<_Avatar> {
+  /// 下载失败自动重试：延迟 3s/6s，最多 3 次尝试后保持字母牌
+  /// （覆盖瞬时网络抖动；引用真失效的场景重试耗尽后自然停住）
+  static const _maxAttempts = 3;
+
+  int _attempt = 0;
+  late Future<String?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Avatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 头像引用/服务器变化：重置计数重新下载
+    if (oldWidget.avatarRef != widget.avatarRef ||
+        oldWidget.serverAddress != widget.serverAddress) {
+      _attempt = 0;
+      _load();
     }
-    return _identicon();
+  }
+
+  void _load() {
+    if (!widget.avatarRef.startsWith('att:')) return;
+    final attachmentId = widget.avatarRef.substring(4);
+    _future = MediaService.instance
+        .download(attachmentId, serverAddress: widget.serverAddress)
+        .then<String?>((path) {
+      if (path.isEmpty) _scheduleRetry();
+      return path;
+    }).catchError((_) {
+      _scheduleRetry();
+      return null;
+    });
+  }
+
+  void _scheduleRetry() {
+    if (_attempt + 1 >= _maxAttempts) return;
+    Future.delayed(Duration(seconds: 3 * (_attempt + 1)), () {
+      if (!mounted) return;
+      setState(() {
+        _attempt++;
+        _load();
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.avatarRef.startsWith('att:')) return _identicon();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.size / 3),
+      child: FutureBuilder<String?>(
+        future: _future,
+        builder: (context, snap) {
+          // 失败（含重试等待期）显示 Identicon，重试成功自动切图片
+          if (snap.hasData && snap.data != null && snap.data!.isNotEmpty) {
+            return Image.file(
+              File(snap.data!),
+              width: widget.size,
+              height: widget.size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _identicon(),
+            );
+          }
+          return _identicon();
+        },
+      ),
+    );
   }
 
   /// Identicon 字母头像（种子派生颜色 + 首字符）
@@ -2859,22 +2903,23 @@ class _Avatar extends StatelessWidget {
       LonIsleTheme.amber,
       LonIsleTheme.primaryDark,
     ];
-    final hash = seed.hashCode.abs();
+    final hash = widget.seed.hashCode.abs();
     final color = colors[hash % colors.length];
-    final letter = seed.isNotEmpty ? seed.characters.first.toUpperCase() : '?';
+    final letter =
+        widget.seed.isNotEmpty ? widget.seed.characters.first.toUpperCase() : '?';
 
     return Container(
-      width: size,
-      height: size,
+      width: widget.size,
+      height: widget.size,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(size / 3),
+        borderRadius: BorderRadius.circular(widget.size / 3),
       ),
       child: Center(
         child: Text(
           letter,
           style: TextStyle(
-            fontSize: size * 0.4,
+            fontSize: widget.size * 0.4,
             fontWeight: FontWeight.w600,
             color: Colors.white,
           ),
