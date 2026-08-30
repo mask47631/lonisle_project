@@ -998,8 +998,16 @@ class ServerConnection extends ChangeNotifier {
     return connection.mentionReadList(msgId);
   }
 
+  /// 退出服务器：LEAVE 通知尽力而为（服务器停机时本地也必须能退出，
+  /// 否则停机的服务器会永久卡在客户端列表里）。
+  /// 服务端离线未收到 LEAVE 时成员记录仍在，可由 Owner/管理后台事后清理。
   Future<void> leaveServer() async {
-    await connection.leaveServer();
+    if (status != ConnectionStatus.connected) return;
+    try {
+      await connection.leaveServer().timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // 通知失败（超时/断线）不阻塞本地移除
+    }
   }
 
   @override
